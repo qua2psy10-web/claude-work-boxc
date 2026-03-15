@@ -136,6 +136,50 @@ export default function StressResult({ results }: Props) {
             ))}
           </div>
 
+          {/* PC部材 せん断照査 */}
+          {(stressCheck.pc_shear_dead.length > 0 || stressCheck.pc_shear_design.length > 0) && (
+            <div>
+              <h3 className="font-bold text-base mb-2">PC部材 せん断応力度照査</h3>
+              <table className="border-collapse border border-gray-300 text-xs w-full">
+                <thead>
+                  <tr>
+                    <th className="border px-1 py-1">位置</th>
+                    <th className="border px-1 py-1">荷重</th>
+                    <th className="border px-1 py-1">S (kN)</th>
+                    <th className="border px-1 py-1">τ (N/mm²)</th>
+                    <th className="border px-1 py-1">k</th>
+                    <th className="border px-1 py-1">τca (N/mm²)</th>
+                    <th className="border px-1 py-1">判定</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stressCheck.pc_shear_dead.map((p, i) => (
+                    <tr key={`dead-${i}`}>
+                      <td className="border px-1 py-1">{p.location}</td>
+                      <td className="border px-1 py-1">死荷重</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.S, 1)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.tau, 3)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.k, 3)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.tau_ca, 3)}</td>
+                      <td className="border px-1 py-1 text-center"><Badge ok={p.ok} /></td>
+                    </tr>
+                  ))}
+                  {stressCheck.pc_shear_design.map((p, i) => (
+                    <tr key={`design-${i}`}>
+                      <td className="border px-1 py-1">{p.location}</td>
+                      <td className="border px-1 py-1">設計荷重</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.S, 1)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.tau, 3)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.k, 3)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.tau_ca, 3)}</td>
+                      <td className="border px-1 py-1 text-center"><Badge ok={p.ok} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div>
             <h3 className="font-bold text-base mb-2">RC部材 応力度照査</h3>
             {Object.entries(stressCheck.rc).map(([key, points]) => (
@@ -174,6 +218,35 @@ export default function StressResult({ results }: Props) {
               </div>
             ))}
           </div>
+
+          {/* RC部材 せん断照査 */}
+          {stressCheck.rc_shear.length > 0 && (
+            <div>
+              <h3 className="font-bold text-base mb-2">RC部材 せん断応力度照査</h3>
+              <table className="border-collapse border border-gray-300 text-xs w-full">
+                <thead>
+                  <tr>
+                    <th className="border px-1 py-1">位置</th>
+                    <th className="border px-1 py-1">S (kN)</th>
+                    <th className="border px-1 py-1">τ (N/mm²)</th>
+                    <th className="border px-1 py-1">τa (N/mm²)</th>
+                    <th className="border px-1 py-1">判定</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stressCheck.rc_shear.map((p, i) => (
+                    <tr key={i}>
+                      <td className="border px-1 py-1">{p.location}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.S, 1)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.tau, 3)}</td>
+                      <td className="border px-1 py-1 text-right">{fmt(p.tau_ca, 3)}</td>
+                      <td className="border px-1 py-1 text-center"><Badge ok={p.ok} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>

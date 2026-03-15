@@ -208,6 +208,36 @@ export function runStressCheck(
       if (maxPoint) points_design.push(maxPoint);
     }
     results.pc_design[pm.key] = points_design;
+
+    // PC部材せん断照査（d/2点）
+    const d_cm_pc = h_cm - (pm.key === '頂版' ? cover.top_outer : cover.bottom_outer);
+    const Ac_m2 = 1.0 * (pm.t / 1000); // m²
+    const Zc_m3 = 1.0 * Math.pow(pm.t / 1000, 2) / 6; // m³
+    const spanX = (dimensions.B0 + dimensions.t3 / 2 + dimensions.t4 / 2) / 1000;
+
+    for (const side of ['d2Left', 'd2Right'] as const) {
+      // 死荷重時
+      const fd = pm.forces[0][side];
+      results.pc_shear_dead.push(checkPCShear(
+        fd.S, fd.N, pm.pe.Pe, pm.e / 10, Ac_m2, Zc_m3,
+        b_cm, d_cm_pc, pcConcrete.tau_a1,
+        `${pm.key} ${side === 'd2Left' ? '左d/2' : '右d/2'}`, 0, spanX,
+      ));
+
+      // 設計荷重時（最大せん断のケースを選択）
+      let maxTau = -1;
+      let maxShear: ShearCheckPoint | null = null;
+      for (let ci = 0; ci < pm.forces.length; ci++) {
+        const f = pm.forces[ci][side];
+        const sp = checkPCShear(
+          f.S, f.N, pm.pe.Pe, pm.e / 10, Ac_m2, Zc_m3,
+          b_cm, d_cm_pc, pcConcrete.tau_a1,
+          `${pm.key} ${side === 'd2Left' ? '左d/2' : '右d/2'}`, ci, spanX,
+        );
+        if (sp.tau > maxTau) { maxTau = sp.tau; maxShear = sp; }
+      }
+      if (maxShear) results.pc_shear_design.push(maxShear);
+    }
   }
 
   // RC部材: 左側壁・右側壁
@@ -243,6 +273,31 @@ export function runStressCheck(
       if (maxPoint) points.push(maxPoint);
     }
     results.rc[rm.key] = points;
+
+    // RC部材せん断照査（d/2点）
+    const spanY = (dimensions.H0 + dimensions.t1 / 2 + dimensions.t2 / 2) / 1000;
+    for (const side of ['d2Left', 'd2Right'] as const) {
+      let maxTau = -1;
+      let maxShear: ShearCheckPoint | null = null;
+      for (let ci = 0; ci < rm.forces.length; ci++) {
+        const f = rm.forces[ci][side];
+        const b_mm = b_cm * 10;
+        const d_mm = d_cm * 10;
+        const tau = Math.abs(f.S * 1000) / (b_mm * d_mm);
+        const sp: ShearCheckPoint = {
+          S: f.S, d: d_cm,
+          tau,
+          tau_ca: rcConcrete.tau_a1,
+          k: 1.0,
+          ok: tau <= rcConcrete.tau_a1,
+          location: `${rm.key} ${side === 'd2Left' ? '上d/2' : '下d/2'}`,
+          caseNo: ci,
+          L: spanY,
+        };
+        if (sp.tau > maxTau) { maxTau = sp.tau; maxShear = sp; }
+      }
+      if (maxShear) results.rc_shear.push(maxShear);
+    }
   }
 
   return results;
