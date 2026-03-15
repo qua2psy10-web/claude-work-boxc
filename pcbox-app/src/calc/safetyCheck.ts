@@ -51,7 +51,8 @@ export function runSafetyCheck(
     const checkResults: SafetyCheckResult[] = [];
     const b = 1000; // mm
     const h = pm.t;  // mm
-    const d = h - pm.d1 * 10; // mm (有効高)
+    const d_s = h - pm.d1 * 10; // mm (RC鉄筋位置)
+    const e_mm = pm.pcSteel.e; // PC鋼棒偏心量 mm
 
     // PC鋼棒
     const Ap = pm.pe.Ap_per_m; // mm²/m
@@ -59,7 +60,6 @@ export function runSafetyCheck(
 
     // RC鉄筋（外側・内側）
     const As_outer = 6.335 * 100; // D13 5本 (PDF参照) mm²
-    const As_inner = 6.335 * 100;
 
     const sigma_ck = pcConcrete.sigma_ck;
     const sigma_sy = rebar.sigma_sy;
@@ -78,14 +78,17 @@ export function runSafetyCheck(
           const Md = f.M;
           const Nd = f.N;
 
-          // 曲げ耐力Muの簡易計算
-          // PC部材: Mu = Ap×σpy×(d - a/2) + As×σsy×(d - a/2)
-          // a = (Ap×σpy + As×σsy - Nd×1000) / (0.85×σck×b)
-          // ここでσckはf'c (設計圧縮強度)
-          const totalTension = Ap * sigma_py + As_outer * sigma_sy;
-          const Nd_N = Nd * 1000; // kN → N
-          const a = (totalTension - Nd_N) / (0.85 * sigma_ck * b);
-          const Mu_Nmm = totalTension * (d - a / 2) + Nd_N * (h / 2 - a / 2);
+          // PC鋼棒の有効高: 正曲げ時は圧縮側(上面)からの距離
+          // 正曲げ(M>0): d_ps = T/2 + e (PC鋼棒は引張側に偏心)
+          // 負曲げ(M<0): d_ps = T/2 - e (PC鋼棒は圧縮側寄り)
+          const d_ps = Md >= 0 ? h / 2 + e_mm : h / 2 - e_mm;
+
+          // 曲げ耐力Muの計算 (2層鋼材)
+          // a = (Ap×σpy + As×σsy) / (0.85×σck×b)
+          const T_ps = Ap * sigma_py;
+          const T_s = As_outer * sigma_sy;
+          const a = (T_ps + T_s) / (0.85 * sigma_ck * b);
+          const Mu_Nmm = T_ps * (d_ps - a / 2) + T_s * (d_s - a / 2);
           const Mu = Mu_Nmm / 1e6; // N·mm → kN·m
 
           const ratio = Math.abs(Md) > 0.001 ? Math.abs(Mu / Md) : 999;

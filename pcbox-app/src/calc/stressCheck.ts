@@ -53,7 +53,7 @@ function checkPCBending(
     sigma_ca,
     sigma_ta,
     ok_c: sigma_c <= sigma_ca,
-    ok_t: sigma_t >= sigma_ta,
+    ok_t: sigma_t >= -sigma_ta,
   };
 }
 
