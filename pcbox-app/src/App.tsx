@@ -11,6 +11,7 @@ import { runSafetyCheck } from './calc/safetyCheck';
 import InputPanel from './components/InputPanel';
 import CrossSection from './components/CrossSection';
 import ResultTabs from './components/ResultTabs';
+import SummaryPanel from './components/SummaryPanel';
 
 function runCalculation(input: DesignInput): CalcResults {
   const deadLoad = calcDeadLoad(input);
@@ -88,7 +89,10 @@ export default function App() {
             </div>
           )}
           {results ? (
-            <ResultTabs results={results} input={input} />
+            <>
+              <SummaryPanel results={results} />
+              <ResultTabs results={results} input={input} />
+            </>
           ) : (
             <div className="text-center text-gray-400 py-20">
               <p>「計算実行」ボタンを押して計算を開始してください</p>
