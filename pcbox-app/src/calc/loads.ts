@@ -31,16 +31,15 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   const { gamma_c, gamma_a, gamma_s } = unitWeights;
 
   const axisHeight = getAxisHeight(input);  // 側壁軸線高
-  const axisWidth = getAxisWidth(input);    // 頂版軸線幅 (内幅+側壁厚/2×2)
-  const outerWidth = getOuterWidth(input);  // 外幅 B
+  const axisWidth = getAxisWidth(input);    // 頂版軸線幅
   const outerHeight = getOuterHeight(input);
 
   // --- 躯体自重 ---
   // (1) 頂版
   const w_top = (t1 / 1000) * gamma_c;  // kN/m²
 
-  // (2) 左側壁 (分布荷重として軸線高で割る)
-  const wallHeight = axisHeight;  // 側壁軸線高さ
+  // (2) 左側壁 (ハンチ含む重量を軸線高で割って分布荷重に)
+  const wallHeight = axisHeight;
   const w_leftWall_rect = (t3 / 1000) * wallHeight * gamma_c;
   const haunchArea = 0.5 * (haunch / 1000) * (haunch / 1000 + haunch / 1000);
   const w_leftWall_haunch = haunchArea * gamma_c;
@@ -52,12 +51,10 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   const totalRightWall = w_rightWall_rect + w_rightWall_haunch;
 
   // --- 上載荷重 ---
+  // PDF準拠: 舗装 = α × pavementThick × γa, 盛土 = α × soilDepth × γs
   const surcharge_pavement = earthPressure.alpha * coverSoil.pavementThick * gamma_a;
-  const surcharge_soil = earthPressure.alpha * (coverSoil.soilDepth - coverSoil.pavementThick) * gamma_s;
-  // 土被り高から舗装厚を引いた分が盛土
-  const soilOnly = coverSoil.soilDepth - coverSoil.pavementThick;
-  const surcharge_soil2 = earthPressure.alpha * soilOnly * gamma_s;
-  const totalSurcharge = surcharge_pavement + surcharge_soil2;
+  const surcharge_soil = earthPressure.alpha * coverSoil.soilDepth * gamma_s;
+  const totalSurcharge = surcharge_pavement + surcharge_soil;
 
   // --- 頂版に作用する荷重 ---
   const w_topLoad = totalSurcharge + roadSurfaceLoad;
@@ -70,7 +67,7 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
 
   // 土圧強度 pi = Ko × (qd + Yo×γa + Zo×γ)
   // 着目位置: 頂版天端、頂版軸線、底版軸線、底面
-  const topSlabTop = coverSoil.soilDepth;   // 頂版天端での土砂深さ
+  const topSlabTop = coverSoil.soilDepth;
   const topSlabAxis = coverSoil.soilDepth + t1 / 2 / 1000;
   const bottomSlabAxis = coverSoil.soilDepth + t1 / 1000 + H0 / 1000 + t2 / 2 / 1000;
   const bottom = coverSoil.soilDepth + outerHeight;
@@ -93,37 +90,35 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   };
 
   // --- 外力集計 ---
-  // 基準: 底版左端下面を原点
-  const B = outerWidth;
-  const xCenter = B / 2;  // 対称軸
+  // 基準: 左側壁軸線を原点 (FORUM8準拠)
+  const B = axisWidth;  // 基準幅 = 軸線幅
+  const xCenter = B / 2;
 
-  // 各荷重のx, y位置と合力
   const forces: ForceRow[] = [];
 
   // 頂版自重
   const V_top = w_top * axisWidth;
   forces.push({ label: '頂版', V: V_top, H: 0, x: xCenter, y: 0, M: V_top * xCenter });
 
-  // 左側壁自重
-  forces.push({ label: '左側壁', V: totalLeftWall, H: 0, x: t3 / 1000 / 2, y: 0, M: totalLeftWall * (t3 / 1000 / 2) });
+  // 左側壁自重 (左側壁軸線位置 = 原点)
+  forces.push({ label: '左側壁', V: totalLeftWall, H: 0, x: 0, y: 0, M: 0 });
 
-  // 右側壁自重
-  const xRight = B - t4 / 1000 / 2;
-  forces.push({ label: '右側壁', V: totalRightWall, H: 0, x: xRight, y: 0, M: totalRightWall * xRight });
+  // 右側壁自重 (右側壁軸線位置 = axisWidth)
+  forces.push({ label: '右側壁', V: totalRightWall, H: 0, x: axisWidth, y: 0, M: totalRightWall * axisWidth });
 
-  // 上載荷重 (頂版幅に作用)
-  const V_surcharge = w_topLoad * outerWidth;
+  // 上載荷重 (軸線幅に作用)
+  const V_surcharge = w_topLoad * axisWidth;
   forces.push({ label: '上載荷重', V: V_surcharge, H: 0, x: xCenter, y: 0, M: V_surcharge * xCenter });
 
-  // 土圧 (左側壁) - 台形分布の合力
-  const H_leftEP = 0.5 * (ep_left.p1 + ep_left.p4) * outerHeight;
-  // 台形の重心位置 (底面からの高さ)
-  const y_leftEP = outerHeight * (ep_left.p1 + 2 * ep_left.p4) / (3 * (ep_left.p1 + ep_left.p4));
+  // 土圧 (左側壁) - 軸線間の台形分布 (p2～p3)
+  const H_leftEP = 0.5 * (ep_left.p2 + ep_left.p3) * axisHeight;
+  // 台形の重心位置 (底版軸線からの高さ)
+  const y_leftEP = axisHeight * (2 * ep_left.p2 + ep_left.p3) / (3 * (ep_left.p2 + ep_left.p3));
   forces.push({ label: '左側壁土圧', V: 0, H: H_leftEP, x: 0, y: y_leftEP, M: H_leftEP * y_leftEP });
 
   // 土圧 (右側壁) - 逆向き
-  const H_rightEP = -0.5 * (ep_right.p1 + ep_right.p4) * outerHeight;
-  const y_rightEP = outerHeight * (ep_right.p1 + 2 * ep_right.p4) / (3 * (ep_right.p1 + ep_right.p4));
+  const H_rightEP = -0.5 * (ep_right.p2 + ep_right.p3) * axisHeight;
+  const y_rightEP = axisHeight * (2 * ep_right.p2 + ep_right.p3) / (3 * (ep_right.p2 + ep_right.p3));
   forces.push({ label: '右側壁土圧', V: 0, H: H_rightEP, x: 0, y: y_rightEP, M: H_rightEP * y_rightEP });
 
   const totalV = forces.reduce((s, f) => s + f.V, 0);
@@ -156,13 +151,12 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
 export function calcLiveLoad1(input: DesignInput): LiveLoadResult {
   const { liveLoad, coverSoil, dimensions } = input;
   const { P, i, beta, D0 } = liveLoad;
-  const { t1 } = dimensions;
 
-  const outerWidth = getOuterWidth(input);
-  const B = outerWidth;
+  const axisWidth = getAxisWidth(input);
+  const B = axisWidth;
 
-  // D: 路面から等分布活荷重載荷位置までの厚さ
-  const D = coverSoil.soilDepth + t1 / 1000;
+  // D: 路面から等分布活荷重載荷位置までの厚さ (路面→頂版天端)
+  const D = coverSoil.pavementThick + coverSoil.soilDepth;
 
   // BOX縦方向単位長さ当りの活荷重
   const Pl_i = (2 * P * (1 + i)) / 2.75;
@@ -170,8 +164,8 @@ export function calcLiveLoad1(input: DesignInput): LiveLoadResult {
   // 換算等分布活荷重
   const Pvl = (Pl_i * beta) / (2 * D + D0);
 
-  // 載荷荷重 - 頂版に作用する鉛直荷重
-  const loadWidth = outerWidth;  // 載荷幅
+  // 載荷荷重 - 頂版に作用する鉛直荷重 (軸線幅に載荷)
+  const loadWidth = axisWidth;
   const V_live = Pvl * loadWidth;
   const xCenter = B / 2;
 
@@ -182,7 +176,7 @@ export function calcLiveLoad1(input: DesignInput): LiveLoadResult {
   const totalV = V_live;
   const totalM = V_live * xCenter;
 
-  // 地盤反力
+  // 地盤反力 (軸線幅で算出)
   const X = totalM / totalV;
   const ecc = B / 2 - X;
   const Me = totalV * ecc;
@@ -201,23 +195,20 @@ export function calcLiveLoad1(input: DesignInput): LiveLoadResult {
 
 /** 活荷重計算 Case-2: 側圧 */
 export function calcLiveLoad2(input: DesignInput): LiveLoadResult {
-  const { liveLoad, earthPressure, dimensions } = input;
+  const { liveLoad, earthPressure } = input;
 
-  const outerHeight = getOuterHeight(input);
-  const outerWidth = getOuterWidth(input);
-  const B = outerWidth;
+  const axisHeight = getAxisHeight(input);
+  const axisWidth = getAxisWidth(input);
+  const B = axisWidth;
 
-  // 側圧
+  // 側圧 (等分布)
   const p_left = earthPressure.Ko_left * liveLoad.wl;
   const p_right = earthPressure.Ko_right * liveLoad.wl;
 
-  const H_left = p_left * outerHeight;
-  const H_right = -p_right * outerHeight;
-  const y_center = outerHeight / 2;  // 等分布なので中央
-
-  // 壁の軸線高の中間
-  const axisHeight = getAxisHeight(input);
-  const yMid = axisHeight / 2 + (dimensions.t2 / 1000) / 2;
+  // 等分布なので軸線高さに作用、重心は中央
+  const H_left = p_left * axisHeight;
+  const H_right = -p_right * axisHeight;
+  const yMid = axisHeight / 2;
 
   const forces: ForceRow[] = [
     { label: '左側壁 分布', V: 0, H: H_left, x: 0, y: yMid, M: H_left * yMid },
@@ -226,11 +217,6 @@ export function calcLiveLoad2(input: DesignInput): LiveLoadResult {
 
   const totalV = 0;
   const totalM = 0;
-
-  // 地盤反力 (活荷重case-2は側圧のみなので鉛直力なし)
-  const Me_reaction = H_left * yMid + H_right * yMid;
-  const qLeft = 6 * Me_reaction / (B * B);
-  const qRight = -6 * Me_reaction / (B * B);
 
   return {
     Pl_i: 0,

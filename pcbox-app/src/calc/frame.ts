@@ -167,7 +167,6 @@ function solveLinear(A: number[][], b: number[]): number[] {
   const aug: number[][] = A.map((row, i) => [...row, b[i]]);
 
   for (let col = 0; col < n; col++) {
-    // ピボット選択
     let maxRow = col;
     for (let row = col + 1; row < n; row++) {
       if (Math.abs(aug[row][col]) > Math.abs(aug[maxRow][col])) {
@@ -242,34 +241,36 @@ function buildDeadLoadCase(input: DesignInput, deadLoad: DeadLoadResult): LoadCa
   for (let i = 0; i < 6; i++) fixedEndForces[0][i] += fef_top[i];
 
   // (2) 側壁自重 - 部材2,3の軸方向荷重（等分布）
+  // 局所x方向（下向き）に自重が作用 → 固定端反力は反対方向（上向き=負）
   const w_leftWall = deadLoad.selfWeight.leftWall;  // kN/m²（軸線高当り）
-  const fef_leftWall = fixedEndUDL(0, spanY); // 軸方向なので別処理
-  // 軸方向等分布荷重の固定端反力
-  fixedEndForces[1][0] += w_leftWall * spanY / 2;  // N_i (下向き=圧縮)
-  fixedEndForces[1][3] += w_leftWall * spanY / 2;  // N_j
+  fixedEndForces[1][0] += -w_leftWall * spanY / 2;  // N_i (restraining force, opposing gravity)
+  fixedEndForces[1][3] += -w_leftWall * spanY / 2;  // N_j
 
   const w_rightWall = deadLoad.selfWeight.rightWall;
-  fixedEndForces[2][0] += w_rightWall * spanY / 2;
-  fixedEndForces[2][3] += w_rightWall * spanY / 2;
+  fixedEndForces[2][0] += -w_rightWall * spanY / 2;
+  fixedEndForces[2][3] += -w_rightWall * spanY / 2;
 
-  // (3) 土圧（左側壁）- 部材2に垂直方向等分布/台形荷重
-  // 部材2は1→3（上→下）、局所座標で垂直方向は右側（内向き）が正
+  // (3) 土圧（左側壁）- 部材2に垂直方向台形荷重
+  // 部材2の局所y方向=右向き(global x+)。土圧は右向き(+local y)。
+  // fixedEndTrapezoid は w>0 = -local y 方向の荷重なので、右向き荷重は負で渡す。
   const ep = deadLoad.earthPressure;
   const p_left_top = ep.left.p2;    // 頂版軸線位置
   const p_left_bottom = ep.left.p3; // 底版軸線位置
-  const fef_ep_left = fixedEndTrapezoid(p_left_top, p_left_bottom, spanY);
+  const fef_ep_left = fixedEndTrapezoid(-p_left_top, -p_left_bottom, spanY);
   for (let i = 0; i < 6; i++) fixedEndForces[1][i] += fef_ep_left[i];
 
-  // (4) 土圧（右側壁）- 部材3に垂直方向（外向き＝負）
+  // (4) 土圧（右側壁）- 部材3に垂直方向
+  // 右側壁の局所y方向も右向き。土圧は左向き(-local y)。w>0 = -local yなので正で渡す。
   const p_right_top = ep.right.p2;
   const p_right_bottom = ep.right.p3;
-  const fef_ep_right = fixedEndTrapezoid(-p_right_top, -p_right_bottom, spanY);
+  const fef_ep_right = fixedEndTrapezoid(p_right_top, p_right_bottom, spanY);
   for (let i = 0; i < 6; i++) fixedEndForces[2][i] += fef_ep_right[i];
 
-  // (5) 地盤反力 - 部材4（底版）に上向き等分布
+  // (5) 地盤反力 - 部材4（底版）に上向き
+  // 底版の局所y方向=上向き。地盤反力は上向き(+local y)。w>0 = -local yなので負で渡す。
   const qL = deadLoad.groundReaction.qLeft;
   const qR = deadLoad.groundReaction.qRight;
-  const fef_reaction = fixedEndTrapezoid(qL, qR, spanX);
+  const fef_reaction = fixedEndTrapezoid(-qL, -qR, spanX);
   for (let i = 0; i < 6; i++) fixedEndForces[3][i] += fef_reaction[i];
 
   return { nodeLoads, fixedEndForces };
@@ -290,10 +291,10 @@ function buildLiveLoad1Case(input: DesignInput, liveLoad: LiveLoadResult): LoadC
   const fef = fixedEndUDL(w, spanX);
   for (let i = 0; i < 6; i++) fixedEndForces[0][i] += fef[i];
 
-  // 地盤反力
+  // 地盤反力（上向き → 負で渡す）
   const qL = liveLoad.groundReaction.qLeft;
   const qR = liveLoad.groundReaction.qRight;
-  const fef_reaction = fixedEndTrapezoid(qL, qR, spanX);
+  const fef_reaction = fixedEndTrapezoid(-qL, -qR, spanX);
   for (let i = 0; i < 6; i++) fixedEndForces[3][i] += fef_reaction[i];
 
   return { nodeLoads, fixedEndForces };
@@ -312,12 +313,12 @@ function buildLiveLoad2Case(input: DesignInput, _liveLoad: LiveLoadResult): Load
   // 側圧
   const p = input.earthPressure.Ko_left * input.liveLoad.wl;
 
-  // 左側壁に等分布水平荷重（内向き正）
-  const fef_left = fixedEndUDL(p, spanY);
+  // 左側壁に等分布水平荷重（右向き=+local y → 負で渡す）
+  const fef_left = fixedEndUDL(-p, spanY);
   for (let i = 0; i < 6; i++) fixedEndForces[1][i] += fef_left[i];
 
-  // 右側壁に等分布水平荷重（内向き＝負）
-  const fef_right = fixedEndUDL(-p, spanY);
+  // 右側壁に等分布水平荷重（左向き=-local y → 正で渡す）
+  const fef_right = fixedEndUDL(p, spanY);
   for (let i = 0; i < 6; i++) fixedEndForces[2][i] += fef_right[i];
 
   return { nodeLoads, fixedEndForces };
@@ -439,6 +440,7 @@ function extractMemberForces(
   memberType: 'horizontal' | 'vertical',
   loadIntensity?: { w?: number; w1?: number; w2?: number }, // 分布荷重
   haunchLen?: number,    // ハンチ長 (m)
+  memberThickness?: number, // 部材厚 (m) — d/2点の位置計算に使用
 ): MemberForces {
   const Ni = endForces[0];
   const Si = endForces[1];
@@ -448,34 +450,35 @@ function extractMemberForces(
   const Mj = endForces[5];
 
   const h = haunchLen || 0;
+  const t = memberThickness || 0;
 
   // 分布荷重の強度
   const w1 = loadIntensity?.w1 ?? loadIntensity?.w ?? 0;
   const w2 = loadIntensity?.w2 ?? loadIntensity?.w ?? 0;
 
   function getValues(x: number): { M: number; N: number; S: number } {
-    // 台形分布荷重 w(x) = w1 + (w2-w1) × x/L
-    const wx = w1 + (w2 - w1) * x / L;
-    const wAvg = w1 + (w2 - w1) * x / (2 * L);
-
-    const M = Mi + Si * x - wAvg * x * x / 2;
+    // 内部断面力（たわみ正の慣例: 正M = 内側引張 = たわみ）
+    // M(x) = -Mi + Si*x - w1*x²/2 - (w2-w1)*x³/(6L)
+    // S(x) = Si - w1*x - (w2-w1)*x²/(2L)
+    const M = -Mi + Si * x - w1 * x * x / 2 - (w2 - w1) * x * x * x / (6 * L);
     const S = Si - (w1 * x + (w2 - w1) * x * x / (2 * L));
-    const N = Ni; // 軸力は一定（分布荷重なしの場合）
+    const N = Ni;
 
     return { M, N, S };
   }
 
-  const leftEnd = { M: Mi, N: Ni, S: Si };
-  const rightEnd = { M: -Mj, N: -Nj, S: -Sj };
+  const leftEnd = { M: -Mi, N: Ni, S: Si };
+  const rightEnd = { M: Mj, N: -Nj, S: -Sj };
 
-  const haunchLeft = h > 0 ? getValues(h) : { M: Mi, N: Ni, S: Si };
-  const haunchRight = h > 0 ? getValues(L - h) : { M: -Mj, N: -Nj, S: -Sj };
+  const haunchLeft = h > 0 ? getValues(h) : { M: -Mi, N: Ni, S: Si };
+  const haunchRight = h > 0 ? getValues(L - h) : { M: Mj, N: -Nj, S: -Sj };
 
   const mid = getValues(L / 2);
 
-  // 2d点（有効高の2倍、概算で部材厚程度の位置）はハンチ端とほぼ同じ扱い
-  const d2Left = haunchLeft;
-  const d2Right = haunchRight;
+  // d/2点: ハンチ端から部材厚の半分の位置（せん断照査用の断面位置）
+  const d2Offset = h + t / 2;
+  const d2Left = d2Offset > 0 && d2Offset < L / 2 ? getValues(d2Offset) : haunchLeft;
+  const d2Right = d2Offset > 0 && d2Offset < L / 2 ? getValues(L - d2Offset) : haunchRight;
 
   return {
     leftEnd,
@@ -485,6 +488,20 @@ function extractMemberForces(
     d2Right,
     haunchRight,
     rightEnd,
+  };
+}
+
+/** M符号を FORUM8 慣例（内面引張正）に変換: 左側壁・底版は部材方向が逆のため反転 */
+function flipMomentSign(mf: MemberForces): MemberForces {
+  const flip = (p: { M: number; N: number; S: number }) => ({ M: -p.M, N: p.N, S: p.S });
+  return {
+    leftEnd: flip(mf.leftEnd),
+    haunchLeft: flip(mf.haunchLeft),
+    d2Left: flip(mf.d2Left),
+    midspan: flip(mf.midspan),
+    d2Right: flip(mf.d2Right),
+    haunchRight: flip(mf.haunchRight),
+    rightEnd: flip(mf.rightEnd),
   };
 }
 
@@ -515,18 +532,40 @@ export function runFrameAnalysis(
   const live2Case = buildLiveLoad2Case(input, liveLoad2);
   const live2Result = solveFrame(input, live2Case);
 
-  function toCaseForces(result: FrameResult): CaseForces {
-    return {
-      topSlab: extractMemberForces(result.memberEndForces[0], spanX, 'horizontal', undefined, haunchLen),
-      leftWall: extractMemberForces(result.memberEndForces[1], spanY, 'vertical', undefined, haunchLen),
-      rightWall: extractMemberForces(result.memberEndForces[2], spanY, 'vertical', undefined, haunchLen),
-      bottomSlab: extractMemberForces(result.memberEndForces[3], spanX, 'horizontal', undefined, haunchLen),
-    };
-  }
+  // 死荷重の分布荷重情報
+  const w_top_dead = deadLoad.selfWeight.topSlab + deadLoad.surcharge + input.roadSurfaceLoad;
+  const ep = deadLoad.earthPressure;
+  const p_side = input.earthPressure.Ko_left * input.liveLoad.wl;
 
-  return {
-    deadForces: toCaseForces(deadResult),
-    live1Forces: toCaseForces(live1Result),
-    live2Forces: toCaseForces(live2Result),
+  // 部材厚 (m)
+  const t1 = input.dimensions.t1 / 1000; // 頂版
+  const t2 = input.dimensions.t2 / 1000; // 底版
+  const t3 = input.dimensions.t3 / 1000; // 左側壁
+  const t4 = input.dimensions.t4 / 1000; // 右側壁
+
+  // extractMemberForces の loadIntensity は FEF と同じ符号規約:
+  // 正 = -local y 方向（水平部材なら下向き、左側壁なら左向き）
+  // 左側壁(member 2)と底版(member 4)は FORUM8 の時計回り走査と逆方向のため M 反転
+  const deadForces: CaseForces = {
+    topSlab: extractMemberForces(deadResult.memberEndForces[0], spanX, 'horizontal', { w: w_top_dead }, haunchLen, t1),
+    leftWall: flipMomentSign(extractMemberForces(deadResult.memberEndForces[1], spanY, 'vertical', { w1: -ep.left.p2, w2: -ep.left.p3 }, haunchLen, t3)),
+    rightWall: extractMemberForces(deadResult.memberEndForces[2], spanY, 'vertical', { w1: ep.right.p2, w2: ep.right.p3 }, haunchLen, t4),
+    bottomSlab: flipMomentSign(extractMemberForces(deadResult.memberEndForces[3], spanX, 'horizontal', { w1: -deadLoad.groundReaction.qLeft, w2: -deadLoad.groundReaction.qRight }, haunchLen, t2)),
   };
+
+  const live1Forces: CaseForces = {
+    topSlab: extractMemberForces(live1Result.memberEndForces[0], spanX, 'horizontal', { w: liveLoad1.Pvl }, haunchLen, t1),
+    leftWall: flipMomentSign(extractMemberForces(live1Result.memberEndForces[1], spanY, 'vertical', undefined, haunchLen, t3)),
+    rightWall: extractMemberForces(live1Result.memberEndForces[2], spanY, 'vertical', undefined, haunchLen, t4),
+    bottomSlab: flipMomentSign(extractMemberForces(live1Result.memberEndForces[3], spanX, 'horizontal', { w1: -liveLoad1.groundReaction.qLeft, w2: -liveLoad1.groundReaction.qRight }, haunchLen, t2)),
+  };
+
+  const live2Forces: CaseForces = {
+    topSlab: extractMemberForces(live2Result.memberEndForces[0], spanX, 'horizontal', undefined, haunchLen, t1),
+    leftWall: flipMomentSign(extractMemberForces(live2Result.memberEndForces[1], spanY, 'vertical', { w: -p_side }, haunchLen, t3)),
+    rightWall: extractMemberForces(live2Result.memberEndForces[2], spanY, 'vertical', { w: p_side }, haunchLen, t4),
+    bottomSlab: flipMomentSign(extractMemberForces(live2Result.memberEndForces[3], spanX, 'horizontal', undefined, haunchLen, t2)),
+  };
+
+  return { deadForces, live1Forces, live2Forces };
 }

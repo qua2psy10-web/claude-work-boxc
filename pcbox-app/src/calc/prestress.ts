@@ -1,4 +1,4 @@
-import { DesignInput, PrestressResult, DeadLoadResult, CaseForces } from '../types';
+import { DesignInput, PrestressResult, CaseForces } from '../types';
 
 /**
  * 有効プレストレス計算
@@ -26,9 +26,10 @@ function calcPrestressForMember(
   const T = thickness; // mm
   const b = 1000; // mm (1m幅)
 
-  // (1) PC鋼棒の初期引張力
-  const Pt = N * Ap * sigma_pt / (L * 1000); // N → kN (Lはm)
-  const Pt_kN = Pt / 1000;
+  // (1) PC鋼棒の初期引張力 (per meter)
+  // Pt = N × Ap × σpt / L (N/m → kN)
+  const Pt_N = N * Ap * sigma_pt / L; // N (per meter)
+  const Pt_kN = Pt_N / 1000; // kN
 
   // (2) リラクセーションによる減少量
   const delta_sigma_pr = (gamma / 100) * sigma_pt;
@@ -43,7 +44,6 @@ function calcPrestressForMember(
   const sigma_cd = Mw_Nmm * (-e) / Ic; // N/mm²
 
   // σcpt: PC鋼棒図心位置におけるプレストレッシング直後のコンクリートの応力度
-  const Pt_N = Pt; // N
   const sigma_cpt = Pt_N / Ac + Pt_N * e * e / Ic;
 
   // σcp = σcd + σcpt
