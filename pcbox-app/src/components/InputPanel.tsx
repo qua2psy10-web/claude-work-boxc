@@ -5,6 +5,7 @@ interface Props {
   input: DesignInput;
   onChange: (input: DesignInput) => void;
   onCalc: () => void;
+  onImport?: (input: DesignInput) => void;
 }
 
 function NumField({ label, value, onChange, unit, step, min, max }: {
@@ -84,7 +85,38 @@ function validateInput(input: DesignInput): string[] {
   return errors;
 }
 
-export default function InputPanel({ input, onChange, onCalc }: Props) {
+export default function InputPanel({ input, onChange, onCalc, onImport }: Props) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        const imported = json.input || json;
+        if (imported.dimensions && imported.unitWeights) {
+          // defaultInputとマージして欠落フィールドを補完
+          const merged = { ...input, ...imported };
+          for (const key of Object.keys(input) as (keyof DesignInput)[]) {
+            if (typeof input[key] === 'object' && input[key] !== null && !Array.isArray(input[key])) {
+              (merged as any)[key] = { ...(input[key] as any), ...((imported[key] as any) || {}) };
+            }
+          }
+          onChange(merged);
+          if (onImport) onImport(merged);
+        } else {
+          alert('無効なJSONファイルです。PCボックスカルバートの設計データではありません。');
+        }
+      } catch {
+        alert('JSONの読み込みに失敗しました。');
+      }
+    };
+    reader.readAsText(file);
+    // リセットして同じファイルを再選択可能に
+    e.target.value = '';
+  };
   const update = <K extends keyof DesignInput>(key: K) =>
     <F extends keyof DesignInput[K]>(field: F) =>
       (v: number) => {
@@ -137,6 +169,18 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
       <Section title="水位">
         <NumField label="外水位" value={input.waterLevel.outer} onChange={wl('outer')} unit="m" min={0} />
         <NumField label="内水位" value={input.waterLevel.inner} onChange={wl('inner')} unit="m" min={0} />
+        <div className="mb-1 flex items-center gap-2 ml-40">
+          <input
+            type="checkbox"
+            id="buoyancy"
+            checked={input.analysis.considerBuoyancy}
+            onChange={e => onChange({
+              ...input,
+              analysis: { ...input.analysis, considerBuoyancy: e.target.checked }
+            })}
+          />
+          <label htmlFor="buoyancy" className="text-sm">浮力考慮</label>
+        </div>
       </Section>
 
       <Section title="鉄筋かぶり">
@@ -170,7 +214,7 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
       )}
 
       <button
-        className={`w-full py-3 rounded font-bold text-lg mt-4 mb-4 ${
+        className={`w-full py-3 rounded font-bold text-lg mt-4 mb-2 ${
           errors.length > 0
             ? 'bg-blue-400 text-white hover:bg-blue-500'
             : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -178,6 +222,20 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
         onClick={onCalc}
       >
         計算実行
+      </button>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={handleImport}
+      />
+      <button
+        className="w-full py-2 rounded font-bold text-sm mb-4 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+        onClick={() => fileInputRef.current?.click()}
+      >
+        JSON読み込み
       </button>
     </div>
   );

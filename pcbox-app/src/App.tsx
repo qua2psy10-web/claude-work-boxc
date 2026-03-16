@@ -12,6 +12,7 @@ import InputPanel from './components/InputPanel';
 import CrossSection from './components/CrossSection';
 import ResultTabs from './components/ResultTabs';
 import SummaryPanel from './components/SummaryPanel';
+import ExportButtons from './components/ExportButtons';
 
 function runCalculation(input: DesignInput): CalcResults {
   const deadLoad = calcDeadLoad(input);
@@ -90,6 +91,7 @@ export default function App() {
           )}
           {results ? (
             <>
+              <ExportButtons input={input} results={results} />
               <SummaryPanel results={results} />
               <ResultTabs results={results} input={input} />
             </>

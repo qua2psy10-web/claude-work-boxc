@@ -266,7 +266,30 @@ function buildDeadLoadCase(input: DesignInput, deadLoad: DeadLoadResult): LoadCa
   const fef_ep_right = fixedEndTrapezoid(p_right_top, p_right_bottom, spanY);
   for (let i = 0; i < 6; i++) fixedEndForces[2][i] += fef_ep_right[i];
 
-  // (5) 地盤反力 - 部材4（底版）に上向き
+  // (5) 外水圧（左側壁）- 右向き(+global x = +local y of member 2)
+  // fixedEndTrapezoid: w>0 = -local y, 右向き荷重は負で渡す
+  const wp = deadLoad.waterPressure;
+  if (wp.outer.pw_topAxis > 0 || wp.outer.pw_botAxis > 0) {
+    const fef_wp_left = fixedEndTrapezoid(-wp.outer.pw_topAxis, -wp.outer.pw_botAxis, spanY);
+    for (let i = 0; i < 6; i++) fixedEndForces[1][i] += fef_wp_left[i];
+
+    // (6) 外水圧（右側壁）- 左向き(-local y of member 3)
+    // 左向き荷重: w>0 = -local y なので正で渡す
+    const fef_wp_right = fixedEndTrapezoid(wp.outer.pw_topAxis, wp.outer.pw_botAxis, spanY);
+    for (let i = 0; i < 6; i++) fixedEndForces[2][i] += fef_wp_right[i];
+  }
+
+  // (7) 内水圧（左側壁）- 左向き(-local y of member 2) → 正で渡す
+  if (wp.inner.pw_topAxis > 0 || wp.inner.pw_botAxis > 0) {
+    const fef_wpi_left = fixedEndTrapezoid(wp.inner.pw_topAxis, wp.inner.pw_botAxis, spanY);
+    for (let i = 0; i < 6; i++) fixedEndForces[1][i] += fef_wpi_left[i];
+
+    // (8) 内水圧（右側壁）- 右向き(+local y of member 3) → 負で渡す
+    const fef_wpi_right = fixedEndTrapezoid(-wp.inner.pw_topAxis, -wp.inner.pw_botAxis, spanY);
+    for (let i = 0; i < 6; i++) fixedEndForces[2][i] += fef_wpi_right[i];
+  }
+
+  // (9) 地盤反力 - 部材4（底版）に上向き
   // 底版の局所y方向=上向き。地盤反力は上向き(+local y)。w>0 = -local yなので負で渡す。
   const qL = deadLoad.groundReaction.qLeft;
   const qR = deadLoad.groundReaction.qRight;
@@ -535,6 +558,7 @@ export function runFrameAnalysis(
   // 死荷重の分布荷重情報
   const w_top_dead = deadLoad.selfWeight.topSlab + deadLoad.surcharge + input.roadSurfaceLoad;
   const ep = deadLoad.earthPressure;
+  const wp = deadLoad.waterPressure;
   const p_side = input.earthPressure.Ko_left * input.liveLoad.wl;
 
   // 部材厚 (m)
@@ -546,10 +570,17 @@ export function runFrameAnalysis(
   // extractMemberForces の loadIntensity は FEF と同じ符号規約:
   // 正 = -local y 方向（水平部材なら下向き、左側壁なら左向き）
   // 左側壁(member 2)と底版(member 4)は FORUM8 の時計回り走査と逆方向のため M 反転
+  // 左側壁: 土圧(右向き=-) + 外水圧(右向き=-) + 内水圧(左向き=+)
+  const leftWall_w1 = -ep.left.p2 - wp.outer.pw_topAxis + wp.inner.pw_topAxis;
+  const leftWall_w2 = -ep.left.p3 - wp.outer.pw_botAxis + wp.inner.pw_botAxis;
+  // 右側壁: 土圧(左向き=+) + 外水圧(左向き=+) + 内水圧(右向き=-)
+  const rightWall_w1 = ep.right.p2 + wp.outer.pw_topAxis - wp.inner.pw_topAxis;
+  const rightWall_w2 = ep.right.p3 + wp.outer.pw_botAxis - wp.inner.pw_botAxis;
+
   const deadForces: CaseForces = {
     topSlab: extractMemberForces(deadResult.memberEndForces[0], spanX, 'horizontal', { w: w_top_dead }, haunchLen, t1),
-    leftWall: flipMomentSign(extractMemberForces(deadResult.memberEndForces[1], spanY, 'vertical', { w1: -ep.left.p2, w2: -ep.left.p3 }, haunchLen, t3)),
-    rightWall: extractMemberForces(deadResult.memberEndForces[2], spanY, 'vertical', { w1: ep.right.p2, w2: ep.right.p3 }, haunchLen, t4),
+    leftWall: flipMomentSign(extractMemberForces(deadResult.memberEndForces[1], spanY, 'vertical', { w1: leftWall_w1, w2: leftWall_w2 }, haunchLen, t3)),
+    rightWall: extractMemberForces(deadResult.memberEndForces[2], spanY, 'vertical', { w1: rightWall_w1, w2: rightWall_w2 }, haunchLen, t4),
     bottomSlab: flipMomentSign(extractMemberForces(deadResult.memberEndForces[3], spanX, 'horizontal', { w1: -deadLoad.groundReaction.qLeft, w2: -deadLoad.groundReaction.qRight }, haunchLen, t2)),
   };
 

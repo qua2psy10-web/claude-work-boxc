@@ -156,6 +156,18 @@ export interface DeadLoadResult {
     left: { p1: number; p2: number; p3: number; p4: number };  // 各着目位置の土圧
     right: { p1: number; p2: number; p3: number; p4: number };
   };
+  waterPressure: {
+    outer: {
+      pw_topAxis: number;  // 頂版軸線位置の外水圧 (kN/m²)
+      pw_botAxis: number;  // 底版軸線位置の外水圧 (kN/m²)
+      uplift: number;      // 底版揚圧力 (kN/m²)
+    };
+    inner: {
+      pw_topAxis: number;  // 頂版軸線位置の内水圧 (kN/m²)
+      pw_botAxis: number;  // 底版軸線位置の内水圧 (kN/m²)
+      weight: number;      // 内水重量 (kN/m²)
+    };
+  };
   forces: ForceRow[];
   totalV: number;
   totalM: number;
