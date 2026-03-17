@@ -6,16 +6,34 @@ function getAxisHeight(input: DesignInput): number {
   return (H0 + t1 / 2 + t2 / 2) / 1000;
 }
 
-/** 軸線幅 (m) */
+/** 全壁厚配列を返す (左壁, 中壁..., 右壁) (mm) */
+function getWallThicknesses(input: DesignInput): number[] {
+  const { t3, t4, midWallThicknesses = [] } = input.dimensions;
+  return [t3, ...midWallThicknesses, t4];
+}
+
+/** 各セルのスパン (壁軸線間距離) を返す (m) */
+function getCellSpans(input: DesignInput): number[] {
+  const { B0, numCells = 1 } = input.dimensions;
+  const walls = getWallThicknesses(input);
+  const spans: number[] = [];
+  for (let i = 0; i < numCells; i++) {
+    spans.push(B0 / 1000 + walls[i] / (2 * 1000) + walls[i + 1] / (2 * 1000));
+  }
+  return spans;
+}
+
+/** 軸線幅 (m) - 全セルの合計スパン */
 function getAxisWidth(input: DesignInput): number {
-  const { B0, t3, t4 } = input.dimensions;
-  return (B0 + t3 / 2 + t4 / 2) / 1000;
+  const spans = getCellSpans(input);
+  return spans.reduce((s, v) => s + v, 0);
 }
 
 /** 外幅 B (m) */
-function getOuterWidth(input: DesignInput): number {
-  const { B0, t3, t4 } = input.dimensions;
-  return (B0 + t3 + t4) / 1000;
+export function getOuterWidth(input: DesignInput): number {
+  const { B0, t3, t4, numCells = 1, midWallThicknesses = [] } = input.dimensions;
+  const midWallSum = midWallThicknesses.reduce((s: number, v: number) => s + v, 0);
+  return (numCells * B0 + t3 + t4 + midWallSum) / 1000;
 }
 
 /** 外高 H (m) */
@@ -49,6 +67,15 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   const w_rightWall_rect = (t4 / 1000) * wallHeight * gamma_c;
   const w_rightWall_haunch = haunchArea * gamma_c;
   const totalRightWall = w_rightWall_rect + w_rightWall_haunch;
+
+  // (4) 中壁自重 (ハンチなし)
+  const midWallThicknesses = dimensions.midWallThicknesses || [];
+  const midWallWeights: number[] = midWallThicknesses.map((tw: number) => {
+    return (tw / 1000) * wallHeight * gamma_c;
+  });
+
+  // (5) 底版
+  const w_bottom = (t2 / 1000) * gamma_c;  // kN/m²
 
   // --- 上載荷重 ---
   // PDF準拠: 舗装 = α × pavementThick × γa, 盛土 = α × soilDepth × γs
@@ -138,6 +165,30 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   // 右側壁自重 (右側壁軸線位置 = axisWidth)
   forces.push({ label: '右側壁', V: totalRightWall, H: 0, x: axisWidth, y: 0, M: totalRightWall * axisWidth });
 
+  // 中壁自重
+  const cellSpans = getCellSpans(input);
+  for (let i = 0; i < midWallWeights.length; i++) {
+    // x position = sum of cell spans for cells 0..i (wall i+1 in full array)
+    let xPos = 0;
+    for (let j = 0; j <= i; j++) {
+      xPos += cellSpans[j];
+    }
+    forces.push({
+      label: `中壁${i + 1}`,
+      V: midWallWeights[i],
+      H: 0,
+      x: xPos,
+      y: 0,
+      M: midWallWeights[i] * xPos,
+    });
+  }
+
+  // 底版自重 (ignoreBottomSelfWeight=false のとき)
+  if (!input.analysis.ignoreBottomSelfWeight) {
+    const V_bottom = w_bottom * axisWidth;
+    forces.push({ label: '底版', V: V_bottom, H: 0, x: xCenter, y: 0, M: V_bottom * xCenter });
+  }
+
   // 上載荷重 (軸線幅に作用)
   const V_surcharge = w_topLoad * axisWidth;
   forces.push({ label: '上載荷重', V: V_surcharge, H: 0, x: xCenter, y: 0, M: V_surcharge * xCenter });
@@ -204,6 +255,8 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
       topSlab: w_top,
       leftWall: totalLeftWall / wallHeight,
       rightWall: totalRightWall / wallHeight,
+      bottomSlab: w_bottom,
+      midWalls: midWallWeights.map(w => w / wallHeight),
     },
     surcharge: totalSurcharge,
     earthPressure: { left: ep_left, right: ep_right },
@@ -218,7 +271,7 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
 
 /** 活荷重計算 Case-1: T荷重 */
 export function calcLiveLoad1(input: DesignInput): LiveLoadResult {
-  const { liveLoad, coverSoil, dimensions } = input;
+  const { liveLoad, coverSoil } = input;
   const { P, i, beta, D0 } = liveLoad;
 
   const axisWidth = getAxisWidth(input);
@@ -267,8 +320,6 @@ export function calcLiveLoad2(input: DesignInput): LiveLoadResult {
   const { liveLoad, earthPressure } = input;
 
   const axisHeight = getAxisHeight(input);
-  const axisWidth = getAxisWidth(input);
-  const B = axisWidth;
 
   // 側圧 (等分布)
   const p_left = earthPressure.Ko_left * liveLoad.wl;

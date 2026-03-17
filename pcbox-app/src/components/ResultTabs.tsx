@@ -43,7 +43,7 @@ export default function ResultTabs({ results, input }: Props) {
       </div>
 
       {active === 'load' && <LoadResult results={results} />}
-      {active === 'force' && <ForceTable results={results} />}
+      {active === 'force' && <ForceTable results={results} input={input} />}
       {active === 'diagram' && <ForceDiagram results={results} input={input} />}
       {active === 'stress' && <StressResult results={results} />}
       {active === 'rebar' && <RebarResult results={results} />}

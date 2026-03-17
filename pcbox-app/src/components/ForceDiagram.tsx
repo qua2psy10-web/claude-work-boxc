@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalcResults, DesignInput, CaseForces } from '../types';
+import { CalcResults, DesignInput, MemberForces } from '../types';
 
 interface Props {
   results: CalcResults;
@@ -15,41 +15,58 @@ export default function ForceDiagram({ results, input }: Props) {
 
   const cases = results.sectionForces.stress;
   const cf = cases[caseIdx];
+  const numCells = input.dimensions.numCells;
 
-  const { B0, H0, t1, t2, t3, t4 } = input.dimensions;
-  const spanX = (B0 + t3 / 2 + t4 / 2) / 1000;
-  const spanY = (H0 + t1 / 2 + t2 / 2) / 1000;
-
-  const svgW = 560;
+  const svgW = 560 + (numCells - 1) * 120;
   const svgH = 460;
   const margin = 80;
   const boxW = svgW - margin * 2;
   const boxH = svgH - margin * 2;
 
-  const corners = {
-    tl: { x: margin, y: margin },
-    tr: { x: margin + boxW, y: margin },
-    bl: { x: margin, y: margin + boxH },
-    br: { x: margin + boxW, y: margin + boxH },
-  };
+  // Calculate proportional x-positions for each wall
+  const { B0, t3, t4, midWallThicknesses } = input.dimensions;
+  const midWallSum = midWallThicknesses.reduce((s, v) => s + v, 0);
+  const totalInternalW = numCells * B0 + t3 + t4 + midWallSum;
+
+  // Wall x-positions (proportional within boxW)
+  const wallXPositions: number[] = []; // x position for each wall (numCells + 1)
+  let cursor = t3 / 2; // left wall axis at t3/2
+  wallXPositions.push(margin + (cursor / totalInternalW) * boxW);
+  for (let i = 0; i < numCells; i++) {
+    cursor += B0;
+    if (i < numCells - 1) {
+      cursor += midWallThicknesses[i] / 2;
+      wallXPositions.push(margin + (cursor / totalInternalW) * boxW);
+      cursor += midWallThicknesses[i] / 2;
+    }
+  }
+  cursor = totalInternalW - t4 / 2; // right wall axis
+  wallXPositions.push(margin + (cursor / totalInternalW) * boxW);
+
+  const yTop = margin;
+  const yBot = margin + boxH;
 
   const ft = forceType;
 
-  function getVal(member: 'topSlab' | 'leftWall' | 'rightWall' | 'bottomSlab', point: string): number {
-    const mf = cf[member];
+  function getValFromMember(mf: MemberForces, point: string): number {
     const p = (mf as any)[point];
     return p ? p[ft] : 0;
   }
 
   const allPoints = ['leftEnd', 'haunchLeft', 'midspan', 'haunchRight', 'rightEnd'];
-  const allMembers: Array<'topSlab' | 'leftWall' | 'rightWall' | 'bottomSlab'> = ['topSlab', 'leftWall', 'rightWall', 'bottomSlab'];
 
-  const maxVal = Math.max(
-    ...allMembers.flatMap(m =>
-      allPoints.map(p => Math.abs(getVal(m, p)))
-    ), 1
-  );
-
+  // Collect all values for scale
+  const allVals: number[] = [];
+  for (let i = 0; i < cf.topSlabs.length; i++) {
+    for (const p of allPoints) allVals.push(Math.abs(getValFromMember(cf.topSlabs[i], p)));
+  }
+  for (let i = 0; i < cf.bottomSlabs.length; i++) {
+    for (const p of allPoints) allVals.push(Math.abs(getValFromMember(cf.bottomSlabs[i], p)));
+  }
+  for (let i = 0; i < cf.walls.length; i++) {
+    for (const p of allPoints) allVals.push(Math.abs(getValFromMember(cf.walls[i], p)));
+  }
+  const maxVal = Math.max(...allVals, 1);
   const diagScale = 55 / maxVal;
 
   const memberLabels: Record<string, string> = {
@@ -59,10 +76,12 @@ export default function ForceDiagram({ results, input }: Props) {
     leftEnd: '左端部', haunchLeft: 'ハンチ端', midspan: '支間部', haunchRight: 'ハンチ端', rightEnd: '右端部',
   };
 
-  function drawMemberDiagram(
+  function drawMemberDiagramGeneric(
     x1: number, y1: number, x2: number, y2: number,
-    member: 'topSlab' | 'leftWall' | 'rightWall' | 'bottomSlab',
+    mf: MemberForces,
+    memberLabel: string,
     normalDir: { nx: number; ny: number },
+    diagKey: string,
   ) {
     const positions = [0, 0.15, 0.5, 0.85, 1.0];
     const pathPoints: { x: number; y: number; val: number; bx: number; by: number; pt: string }[] = [];
@@ -71,7 +90,7 @@ export default function ForceDiagram({ results, input }: Props) {
       const t = positions[i];
       const px = x1 + (x2 - x1) * t;
       const py = y1 + (y2 - y1) * t;
-      const val = getVal(member, allPoints[i]);
+      const val = getValFromMember(mf, allPoints[i]);
       const offset = val * diagScale * (ft === 'M' ? -1 : 1);
 
       pathPoints.push({
@@ -89,25 +108,22 @@ export default function ForceDiagram({ results, input }: Props) {
       `L ${x2} ${y2}`,
     ].join(' ');
 
-    // Only show labels at key points (端部 and 支間部) to avoid clutter
-    const labelIndices = [0, 2, 4]; // leftEnd, midspan, rightEnd
+    const labelIndices = [0, 2, 4];
 
     return (
-      <g>
+      <g key={diagKey}>
         <path d={d} fill="rgba(59,130,246,0.12)" stroke="rgb(59,130,246)" strokeWidth={1.5} />
-        {/* Hatching lines from axis to diagram */}
         {pathPoints.map((p, i) => (
-          <line key={`h-${i}`} x1={p.bx} y1={p.by} x2={p.x} y2={p.y}
+          <line key={`${diagKey}-h-${i}`} x1={p.bx} y1={p.by} x2={p.x} y2={p.y}
             stroke="rgba(59,130,246,0.3)" strokeWidth={0.5} />
         ))}
-        {/* Value labels at key points */}
         {labelIndices.map(i => {
           const p = pathPoints[i];
           if (Math.abs(p.val) < 0.05) return null;
           const labelOffset = 12;
           return (
             <text
-              key={`l-${i}`}
+              key={`${diagKey}-l-${i}`}
               x={p.x + normalDir.nx * labelOffset}
               y={p.y + normalDir.ny * labelOffset}
               fontSize={9}
@@ -120,14 +136,13 @@ export default function ForceDiagram({ results, input }: Props) {
             </text>
           );
         })}
-        {/* Hover targets */}
         {pathPoints.map((p, i) => (
           <circle
-            key={`c-${i}`}
+            key={`${diagKey}-c-${i}`}
             cx={p.x} cy={p.y} r={6}
             fill="transparent"
             cursor="pointer"
-            onMouseEnter={() => setHovered({ member, point: allPoints[i], val: p.val, x: p.x, y: p.y })}
+            onMouseEnter={() => setHovered({ member: memberLabel, point: allPoints[i], val: p.val, x: p.x, y: p.y })}
             onMouseLeave={() => setHovered(null)}
           />
         ))}
@@ -175,33 +190,78 @@ export default function ForceDiagram({ results, input }: Props) {
       </div>
 
       <svg width={svgW} height={svgH} className="bg-white border border-gray-200 rounded">
-        {/* ボックス軸線 */}
-        <line x1={corners.tl.x} y1={corners.tl.y} x2={corners.tr.x} y2={corners.tr.y}
-          stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
-        <line x1={corners.tl.x} y1={corners.tl.y} x2={corners.bl.x} y2={corners.bl.y}
-          stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
-        <line x1={corners.tr.x} y1={corners.tr.y} x2={corners.br.x} y2={corners.br.y}
-          stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
-        <line x1={corners.bl.x} y1={corners.bl.y} x2={corners.br.x} y2={corners.br.y}
-          stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
+        {/* ボックス軸線: 頂版・底版セグメント */}
+        {Array.from({ length: numCells }).map((_, ci) => {
+          const xL = wallXPositions[ci];
+          const xR = wallXPositions[ci + 1];
+          return (
+            <React.Fragment key={`axis-${ci}`}>
+              <line x1={xL} y1={yTop} x2={xR} y2={yTop} stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
+              <line x1={xL} y1={yBot} x2={xR} y2={yBot} stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
+            </React.Fragment>
+          );
+        })}
+        {/* 壁軸線 */}
+        {wallXPositions.map((wx, wi) => (
+          <line key={`wall-axis-${wi}`} x1={wx} y1={yTop} x2={wx} y2={yBot}
+            stroke="#999" strokeWidth={1} strokeDasharray="4,2" />
+        ))}
 
         {/* 部材ラベル */}
-        <text x={(corners.tl.x + corners.tr.x) / 2} y={corners.tl.y - 5} textAnchor="middle" fontSize={9} fill="#666">頂版</text>
-        <text x={(corners.bl.x + corners.br.x) / 2} y={corners.bl.y + 14} textAnchor="middle" fontSize={9} fill="#666">底版</text>
-        <text x={corners.tl.x - 5} y={(corners.tl.y + corners.bl.y) / 2} textAnchor="end" fontSize={9} fill="#666" dominantBaseline="middle">左側壁</text>
-        <text x={corners.tr.x + 5} y={(corners.tr.y + corners.br.y) / 2} textAnchor="start" fontSize={9} fill="#666" dominantBaseline="middle">右側壁</text>
+        {Array.from({ length: numCells }).map((_, ci) => {
+          const xMid = (wallXPositions[ci] + wallXPositions[ci + 1]) / 2;
+          return (
+            <React.Fragment key={`label-${ci}`}>
+              <text x={xMid} y={yTop - 5} textAnchor="middle" fontSize={9} fill="#666">
+                {numCells > 1 ? `頂版${ci + 1}` : '頂版'}
+              </text>
+              <text x={xMid} y={yBot + 14} textAnchor="middle" fontSize={9} fill="#666">
+                {numCells > 1 ? `底版${ci + 1}` : '底版'}
+              </text>
+            </React.Fragment>
+          );
+        })}
+        <text x={wallXPositions[0] - 5} y={(yTop + yBot) / 2} textAnchor="end" fontSize={9} fill="#666" dominantBaseline="middle">左側壁</text>
+        <text x={wallXPositions[wallXPositions.length - 1] + 5} y={(yTop + yBot) / 2} textAnchor="start" fontSize={9} fill="#666" dominantBaseline="middle">右側壁</text>
+        {midWallThicknesses.map((_, wi) => (
+          <text key={`mwlabel-${wi}`} x={wallXPositions[wi + 1] + 5} y={(yTop + yBot) / 2 - 10} textAnchor="start" fontSize={8} fill="#888" dominantBaseline="middle">
+            中壁{wi + 1}
+          </text>
+        ))}
 
-        {/* 節点番号 */}
-        <circle cx={corners.tl.x} cy={corners.tl.y} r={3} fill="#666" />
-        <circle cx={corners.tr.x} cy={corners.tr.y} r={3} fill="#666" />
-        <circle cx={corners.bl.x} cy={corners.bl.y} r={3} fill="#666" />
-        <circle cx={corners.br.x} cy={corners.br.y} r={3} fill="#666" />
+        {/* 節点 */}
+        {wallXPositions.map((wx, wi) => (
+          <React.Fragment key={`nodes-${wi}`}>
+            <circle cx={wx} cy={yTop} r={3} fill="#666" />
+            <circle cx={wx} cy={yBot} r={3} fill="#666" />
+          </React.Fragment>
+        ))}
 
-        {/* ダイアグラム */}
-        {drawMemberDiagram(corners.tl.x, corners.tl.y, corners.tr.x, corners.tr.y, 'topSlab', { nx: 0, ny: -1 })}
-        {drawMemberDiagram(corners.tl.x, corners.tl.y, corners.bl.x, corners.bl.y, 'leftWall', { nx: -1, ny: 0 })}
-        {drawMemberDiagram(corners.tr.x, corners.tr.y, corners.br.x, corners.br.y, 'rightWall', { nx: 1, ny: 0 })}
-        {drawMemberDiagram(corners.bl.x, corners.bl.y, corners.br.x, corners.br.y, 'bottomSlab', { nx: 0, ny: 1 })}
+        {/* ダイアグラム: 頂版 */}
+        <g>
+          {cf.topSlabs.map((mf, ci) => drawMemberDiagramGeneric(
+            wallXPositions[ci], yTop, wallXPositions[ci + 1], yTop,
+            mf, numCells > 1 ? `頂版${ci + 1}` : '頂版', { nx: 0, ny: -1 }, `diag-top-${ci}`,
+          ))}
+        </g>
+        {/* ダイアグラム: 底版 */}
+        <g>
+          {cf.bottomSlabs.map((mf, ci) => drawMemberDiagramGeneric(
+            wallXPositions[ci], yBot, wallXPositions[ci + 1], yBot,
+            mf, numCells > 1 ? `底版${ci + 1}` : '底版', { nx: 0, ny: 1 }, `diag-bot-${ci}`,
+          ))}
+        </g>
+        {/* ダイアグラム: 壁 */}
+        <g>
+          {cf.walls.map((mf, wi) => {
+            const label = wi === 0 ? '左側壁' : wi === cf.walls.length - 1 ? '右側壁' : `中壁${wi}`;
+            const nx = wi === 0 ? -1 : wi === cf.walls.length - 1 ? 1 : (wi % 2 === 0 ? 1 : -1);
+            return drawMemberDiagramGeneric(
+              wallXPositions[wi], yTop, wallXPositions[wi], yBot,
+              mf, label, { nx, ny: 0 }, `diag-wall-${wi}`,
+            );
+          })}
+        </g>
 
         {/* タイトル */}
         <text x={svgW / 2} y={22} textAnchor="middle" fontSize={13} fontWeight="bold" fill="#333">
@@ -223,7 +283,7 @@ export default function ForceDiagram({ results, input }: Props) {
               y={Math.max(hovered.y - 18, 22)}
               fontSize={10} fill="#333"
             >
-              {memberLabels[hovered.member]} {pointLabels[hovered.point]}
+              {memberLabels[hovered.member] || hovered.member} {pointLabels[hovered.point]}
             </text>
             <text
               x={Math.min(hovered.x + 15, svgW - 125)}

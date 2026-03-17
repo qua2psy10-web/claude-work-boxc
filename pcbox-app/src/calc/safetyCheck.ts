@@ -1,4 +1,5 @@
-import { DesignInput, PrestressResult, CaseForces, SafetyCheckResult } from '../types';
+import { DesignInput, PrestressResult, CaseForces, SafetyCheckResult, MemberForces, cfLeftWall, cfRightWall } from '../types';
+import { calcRebarArea } from '../utils/constants';
 
 /**
  * 破壊安全度照査
@@ -23,29 +24,34 @@ export function runSafetyCheck(
 
   const { dimensions, pcConcrete, rcConcrete, rebar, pcSteel_top, pcSteel_bottom, cover } = input;
 
-  // PC部材: 頂版・底版
-  const pcMembers = [
-    {
-      key: '頂版',
-      t: dimensions.t1,
-      pe: prestress.top,
-      pcSteel: pcSteel_top,
-      d1: cover.top_upper,
-      d2: cover.top_lower,
-      forces: [safety1, safety2, safety3],
-      getMember: (cf: CaseForces) => cf.topSlab,
-    },
-    {
-      key: '底版',
-      t: dimensions.t2,
-      pe: prestress.bottom,
-      pcSteel: pcSteel_bottom,
-      d1: cover.bottom_upper,
-      d2: cover.bottom_lower,
-      forces: [safety1, safety2, safety3],
-      getMember: (cf: CaseForces) => cf.bottomSlab,
-    },
-  ];
+  // PC部材: 頂版・底版（多連時は全スラブ）
+  const numCells = dimensions.numCells;
+  const pcMembers: { key: string; t: number; pe: typeof prestress.top; pcSteel: typeof pcSteel_top; d1: number; d2: number; forces: CaseForces[][]; getMember: (cf: CaseForces) => MemberForces }[] = [];
+  for (let si = 0; si < numCells; si++) {
+    const suffix = numCells > 1 ? `${si + 1}` : '';
+    pcMembers.push(
+      {
+        key: `頂版${suffix}`,
+        t: dimensions.t1,
+        pe: prestress.top,
+        pcSteel: pcSteel_top,
+        d1: cover.top_upper,
+        d2: cover.top_lower,
+        forces: [safety1, safety2, safety3],
+        getMember: (cf: CaseForces) => cf.topSlabs[si],
+      },
+      {
+        key: `底版${suffix}`,
+        t: dimensions.t2,
+        pe: prestress.bottom,
+        pcSteel: pcSteel_bottom,
+        d1: cover.bottom_upper,
+        d2: cover.bottom_lower,
+        forces: [safety1, safety2, safety3],
+        getMember: (cf: CaseForces) => cf.bottomSlabs[si],
+      },
+    );
+  }
 
   for (const pm of pcMembers) {
     const checkResults: SafetyCheckResult[] = [];
@@ -58,8 +64,9 @@ export function runSafetyCheck(
     const Ap = pm.pe.Ap_per_m; // mm²/m
     const sigma_py = pm.pcSteel.sigma_py;
 
-    // RC鉄筋（外側・内側）
-    const As_outer = 6.335 * 100; // D13 5本 (PDF参照) mm²
+    // RC鉄筋（外側）
+    const rebarLayout = pm.key === '頂版' ? input.rebarLayout.topSlab : input.rebarLayout.bottomSlab;
+    const As_outer = calcRebarArea(rebarLayout.outer.diameter, rebarLayout.outer.count);
 
     const sigma_ck = pcConcrete.sigma_ck;
     const sigma_sy = rebar.sigma_sy;
@@ -107,25 +114,40 @@ export function runSafetyCheck(
     results.pc[pm.key] = checkResults;
   }
 
-  // RC部材: 左側壁・右側壁
-  const rcMembers = [
+  // RC部材: 左側壁・中壁・右側壁
+  const rcMembers: { key: string; t: number; d1: number; d2: number; forces: CaseForces[][]; getMember: (cf: CaseForces) => typeof cf.walls[0]; rebarLayout: typeof input.rebarLayout.leftWall }[] = [
     {
       key: '左側壁',
       t: dimensions.t3,
       d1: cover.left_outer,
       d2: cover.left_inner,
       forces: [safety1, safety2, safety3],
-      getMember: (cf: CaseForces) => cf.leftWall,
-    },
-    {
-      key: '右側壁',
-      t: dimensions.t4,
-      d1: cover.right_outer,
-      d2: cover.right_inner,
-      forces: [safety1, safety2, safety3],
-      getMember: (cf: CaseForces) => cf.rightWall,
+      getMember: (cf: CaseForces) => cfLeftWall(cf),
+      rebarLayout: input.rebarLayout.leftWall,
     },
   ];
+  // 中壁
+  for (let wi = 0; wi < dimensions.midWallThicknesses.length; wi++) {
+    const wallIdx = wi + 1;
+    rcMembers.push({
+      key: `中壁${wi + 1}`,
+      t: dimensions.midWallThicknesses[wi],
+      d1: cover.left_outer,
+      d2: cover.left_inner,
+      forces: [safety1, safety2, safety3],
+      getMember: (cf: CaseForces) => cf.walls[wallIdx],
+      rebarLayout: input.rebarLayout.midWalls[wi] || input.rebarLayout.leftWall,
+    });
+  }
+  rcMembers.push({
+    key: '右側壁',
+    t: dimensions.t4,
+    d1: cover.right_outer,
+    d2: cover.right_inner,
+    forces: [safety1, safety2, safety3],
+    getMember: (cf: CaseForces) => cfRightWall(cf),
+    rebarLayout: input.rebarLayout.rightWall,
+  });
 
   for (const rm of rcMembers) {
     const checkResults: SafetyCheckResult[] = [];
@@ -133,8 +155,7 @@ export function runSafetyCheck(
     const h = rm.t;
     const d = h - rm.d1 * 10;
 
-    const As_outer = 14.325 * 100; // D19 5本 mm²
-    const As_inner = 3.567 * 100;
+    const As_outer = calcRebarArea(rm.rebarLayout.outer.diameter, rm.rebarLayout.outer.count);
 
     const sigma_ck = rcConcrete.f_cd;
     const sigma_sy = rebar.sigma_sy;

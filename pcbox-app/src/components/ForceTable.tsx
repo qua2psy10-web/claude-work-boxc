@@ -1,18 +1,20 @@
 import React from 'react';
-import { CalcResults, CaseForces, MemberForces } from '../types';
+import { CalcResults, DesignInput, CaseForces, MemberForces, cfTopSlab, cfBottomSlab, cfLeftWall, cfRightWall } from '../types';
 
 interface Props {
   results: CalcResults;
+  input: DesignInput;
 }
 
 function fmt(v: number): string {
   return v.toFixed(1);
 }
 
-function MemberTable({ title, cases, getMember }: {
+function MemberTable({ title, cases, getMember, caseLabels }: {
   title: string;
   cases: CaseForces[];
   getMember: (cf: CaseForces) => MemberForces;
+  caseLabels: string[];
 }) {
   const points = ['leftEnd', 'haunchLeft', 'midspan', 'haunchRight', 'rightEnd'] as const;
   const pointLabels = ['左端部', 'ハンチ端', '支間部', 'ハンチ端', '右端部'];
@@ -36,7 +38,7 @@ function MemberTable({ title, cases, getMember }: {
             return (
               <React.Fragment key={ci}>
                 <tr>
-                  <td className="border px-1 py-1 text-center" rowSpan={3}>{ci + 1}</td>
+                  <td className="border px-1 py-1 text-center whitespace-nowrap" rowSpan={3} title={caseLabels[ci] || ''}>{caseLabels[ci] || `${ci + 1}`}</td>
                   <td className="border px-1 py-1">M(kN·m)</td>
                   {points.map((p, pi) => (
                     <td key={pi} className="border px-1 py-1 text-right">{fmt(mf[p].M)}</td>
@@ -63,7 +65,8 @@ function MemberTable({ title, cases, getMember }: {
   );
 }
 
-export default function ForceTable({ results }: Props) {
+export default function ForceTable({ results, input }: Props) {
+  const numCells = input.dimensions.numCells;
   const [section, setSection] = React.useState<'stress' | 'rebar' | 'safety1' | 'safety2' | 'safety3'>('stress');
 
   const sectionLabels = {
@@ -74,7 +77,16 @@ export default function ForceTable({ results }: Props) {
     safety3: '破壊安全度-3 (1.7×(死+活))',
   };
 
+  const caseLabelsMap: Record<string, string[]> = {
+    stress: ['D', 'D+L1', 'D+L2', 'D+L1+L2'],
+    rebar: ['D', 'D+1.35L1', 'D+1.35L2', 'D+1.35(L1+L2)'],
+    safety1: ['1.3D', '1.3D+2.5L1', '1.3D+2.5L2', '1.3D+2.5(L1+L2)'],
+    safety2: ['D', 'D+2.5L1', 'D+2.5L2', 'D+2.5(L1+L2)'],
+    safety3: ['1.7D', '1.7(D+L1)', '1.7(D+L2)', '1.7(D+L1+L2)'],
+  };
+
   const cases = results.sectionForces[section];
+  const currentCaseLabels = caseLabelsMap[section] || [];
 
   return (
     <div>
@@ -92,10 +104,26 @@ export default function ForceTable({ results }: Props) {
         ))}
       </div>
 
-      <MemberTable title="頂　版" cases={cases} getMember={cf => cf.topSlab} />
-      <MemberTable title="左側壁" cases={cases} getMember={cf => cf.leftWall} />
-      <MemberTable title="右側壁" cases={cases} getMember={cf => cf.rightWall} />
-      <MemberTable title="底　版" cases={cases} getMember={cf => cf.bottomSlab} />
+      {/* 頂版 */}
+      {numCells > 1
+        ? Array.from({ length: numCells }).map((_, ci) => (
+            <MemberTable key={`top-${ci}`} title={`頂版${ci + 1}`} cases={cases} getMember={cf => cf.topSlabs[ci]} caseLabels={currentCaseLabels} />
+          ))
+        : <MemberTable title="頂　版" cases={cases} getMember={cf => cfTopSlab(cf)} caseLabels={currentCaseLabels} />
+      }
+      {/* 壁 */}
+      <MemberTable title="左側壁" cases={cases} getMember={cf => cfLeftWall(cf)} caseLabels={currentCaseLabels} />
+      {input.dimensions.midWallThicknesses.map((_, wi) => (
+        <MemberTable key={`mw-${wi}`} title={`中壁${wi + 1}`} cases={cases} getMember={cf => cf.walls[wi + 1]} caseLabels={currentCaseLabels} />
+      ))}
+      <MemberTable title="右側壁" cases={cases} getMember={cf => cfRightWall(cf)} caseLabels={currentCaseLabels} />
+      {/* 底版 */}
+      {numCells > 1
+        ? Array.from({ length: numCells }).map((_, ci) => (
+            <MemberTable key={`bot-${ci}`} title={`底版${ci + 1}`} cases={cases} getMember={cf => cf.bottomSlabs[ci]} caseLabels={currentCaseLabels} />
+          ))
+        : <MemberTable title="底　版" cases={cases} getMember={cf => cfBottomSlab(cf)} caseLabels={currentCaseLabels} />
+      }
     </div>
   );
 }

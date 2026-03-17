@@ -1,4 +1,5 @@
-import { DesignInput, PrestressResult, CaseForces, StressCheckPoint, ShearCheckPoint, RCStressCheckPoint } from '../types';
+import { DesignInput, PrestressResult, CaseForces, StressCheckPoint, ShearCheckPoint, RCStressCheckPoint, MemberForces, cfLeftWall, cfRightWall } from '../types';
+import { calcRebarArea } from '../utils/constants';
 
 /**
  * PC部材の応力度照査（曲げ）
@@ -19,10 +20,6 @@ function checkPCBending(
   const h = h_cm / 100; // m
   const Ac = b * h; // m²
   const Zc = b * h * h / 6; // m³
-  const e = e_mm / 1000; // m
-
-  const Pe_N = Pe; // kN
-  const N_val = N; // kN
 
   // M, N, Pe は kN, kN·m 単位
   // 応力度は N/mm² = kN/m² × 1e-3 ... いや、kN/m² / 1000 = N/mm²
@@ -109,14 +106,13 @@ function checkRCBending(
   b_cm: number, h_cm: number,
   d_cm: number,
   As_outer: number, // 外側鉄筋量 mm²
-  As_inner: number, // 内側鉄筋量 mm²
+  _As_inner: number, // 内側鉄筋量 mm²
   n: number,        // 弾性係数比
   sigma_ca: number, sigma_sa: number,
 ): RCStressCheckPoint {
   const b = b_cm * 10; // mm
   const d = d_cm * 10; // mm
   const M_Nmm = M * 1e6;
-  const N_N = N * 1e3;
 
   // 簡易的なRC断面計算
   // 中立軸位置xを求める（軸力無視の簡易計算）
@@ -166,11 +162,16 @@ export function runStressCheck(
     rc_shear: [],
   };
 
-  // PC部材: 頂版・底版
-  const pcMembers = [
-    { key: '頂版', forces: stressForces.map(c => c.topSlab), t: dimensions.t1, pe: prestress.top, e: input.pcSteel_top.e },
-    { key: '底版', forces: stressForces.map(c => c.bottomSlab), t: dimensions.t2, pe: prestress.bottom, e: input.pcSteel_bottom.e },
-  ];
+  // PC部材: 頂版・底版（多連時は全スラブ）
+  const numCells = dimensions.numCells;
+  const pcMembers: { key: string; forces: MemberForces[]; t: number; pe: typeof prestress.top; e: number }[] = [];
+  for (let si = 0; si < numCells; si++) {
+    const suffix = numCells > 1 ? `${si + 1}` : '';
+    pcMembers.push(
+      { key: `頂版${suffix}`, forces: stressForces.map(c => c.topSlabs[si]), t: dimensions.t1, pe: prestress.top, e: input.pcSteel_top.e },
+      { key: `底版${suffix}`, forces: stressForces.map(c => c.bottomSlabs[si]), t: dimensions.t2, pe: prestress.bottom, e: input.pcSteel_bottom.e },
+    );
+  }
 
   for (const pm of pcMembers) {
     const b_cm = 100.0; // 1m幅
@@ -210,7 +211,7 @@ export function runStressCheck(
     results.pc_design[pm.key] = points_design;
 
     // PC部材せん断照査（d/2点）
-    const d_cm_pc = h_cm - (pm.key === '頂版' ? cover.top_outer : cover.bottom_outer);
+    const d_cm_pc = h_cm - (pm.key === '頂版' ? cover.top_upper : cover.bottom_upper);
     const Ac_m2 = 1.0 * (pm.t / 1000); // m²
     const Zc_m3 = 1.0 * Math.pow(pm.t / 1000, 2) / 6; // m³
     const spanX = (dimensions.B0 + dimensions.t3 / 2 + dimensions.t4 / 2) / 1000;
@@ -240,19 +241,33 @@ export function runStressCheck(
     }
   }
 
-  // RC部材: 左側壁・右側壁
-  const n_rc = input.pcConcrete.Ep ? 200000 / (rcConcrete.Ec) : 15; // Es/Ec
-  const rcMembers = [
-    { key: '左側壁', forces: stressForces.map(c => c.leftWall), t: dimensions.t3 },
-    { key: '右側壁', forces: stressForces.map(c => c.rightWall), t: dimensions.t4 },
+  // RC部材: 左側壁・中壁・右側壁
+  const n_rc = input.pcSteel_top.Ep ? 200000 / (rcConcrete.Ec) : 15; // Es/Ec
+  const rcMembers: { key: string; forces: MemberForces[]; t: number; rebarLayout: typeof input.rebarLayout.leftWall; coverOuter: number; coverInner: number }[] = [
+    { key: '左側壁', forces: stressForces.map(c => cfLeftWall(c)), t: dimensions.t3, rebarLayout: input.rebarLayout.leftWall, coverOuter: cover.left_outer, coverInner: cover.left_inner },
   ];
+  // 中壁
+  for (let wi = 0; wi < dimensions.midWallThicknesses.length; wi++) {
+    const wallIdx = wi + 1; // walls[0]=左, walls[1..N-1]=中壁, walls[N]=右
+    rcMembers.push({
+      key: `中壁${wi + 1}`,
+      forces: stressForces.map(c => c.walls[wallIdx]),
+      t: dimensions.midWallThicknesses[wi],
+      rebarLayout: input.rebarLayout.midWalls[wi] || input.rebarLayout.leftWall,
+      coverOuter: cover.left_outer,
+      coverInner: cover.left_inner,
+    });
+  }
+  rcMembers.push(
+    { key: '右側壁', forces: stressForces.map(c => cfRightWall(c)), t: dimensions.t4, rebarLayout: input.rebarLayout.rightWall, coverOuter: cover.right_outer, coverInner: cover.right_inner },
+  );
 
   for (const rm of rcMembers) {
     const b_cm = 100.0;
     const h_cm = rm.t / 10;
-    const d_cm = h_cm - cover.left_outer;
-    const As_outer = 14.325 * 100; // D19 5本 × 100cm = 14.325 cm²/m → mm²
-    const As_inner = 3.567 * 100;
+    const d_cm = h_cm - rm.coverOuter;
+    const As_outer = calcRebarArea(rm.rebarLayout.outer.diameter, rm.rebarLayout.outer.count);
+    const As_inner = calcRebarArea(rm.rebarLayout.inner.diameter, rm.rebarLayout.inner.count);
 
     const points: RCStressCheckPoint[] = [];
     const locations = ['leftEnd', 'haunchLeft', 'midspan', 'haunchRight', 'rightEnd'] as const;

@@ -25,26 +25,15 @@ function combineMemberForces(
   };
 }
 
-/** 3つのMemberForcesを係数を付けて合成 */
-function combineMemberForces3(
-  a: MemberForces, fa: number,
-  b: MemberForces, fb: number,
-  c: MemberForces, fc: number,
-): MemberForces {
-  const ab = combineMemberForces(a, fa, b, fb);
-  return combineMemberForces(ab, 1.0, c, fc);
-}
-
 /** CaseForces全体を合成 */
 function combineCaseForces(
   a: CaseForces, fa: number,
   b: CaseForces, fb: number,
 ): CaseForces {
   return {
-    topSlab: combineMemberForces(a.topSlab, fa, b.topSlab, fb),
-    leftWall: combineMemberForces(a.leftWall, fa, b.leftWall, fb),
-    rightWall: combineMemberForces(a.rightWall, fa, b.rightWall, fb),
-    bottomSlab: combineMemberForces(a.bottomSlab, fa, b.bottomSlab, fb),
+    topSlabs: a.topSlabs.map((_, i) => combineMemberForces(a.topSlabs[i], fa, b.topSlabs[i], fb)),
+    bottomSlabs: a.bottomSlabs.map((_, i) => combineMemberForces(a.bottomSlabs[i], fa, b.bottomSlabs[i], fb)),
+    walls: a.walls.map((_, i) => combineMemberForces(a.walls[i], fa, b.walls[i], fb)),
   };
 }
 

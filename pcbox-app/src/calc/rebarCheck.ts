@@ -1,4 +1,4 @@
-import { DesignInput, PrestressResult, CaseForces, RebarCheckResult } from '../types';
+import { DesignInput, PrestressResult, CaseForces, RebarCheckResult, MemberForces } from '../types';
 
 /**
  * 引張鉄筋量照査
@@ -18,11 +18,16 @@ export function runRebarCheck(
   const results: Record<string, RebarCheckResult> = {};
   const { dimensions, rebar } = input;
 
-  // PC部材（頂版・底版）の引張鉄筋量照査
-  const pcMembers = [
-    { key: '頂版', forces: rebarForces.map(c => c.topSlab), T: dimensions.t1, pe: prestress.top, e_mm: input.pcSteel_top.e },
-    { key: '底版', forces: rebarForces.map(c => c.bottomSlab), T: dimensions.t2, pe: prestress.bottom, e_mm: input.pcSteel_bottom.e },
-  ];
+  // PC部材（頂版・底版）の引張鉄筋量照査（多連時は全スラブ）
+  const numCells = dimensions.numCells;
+  const pcMembers: { key: string; forces: MemberForces[]; T: number; pe: typeof prestress.top; e_mm: number }[] = [];
+  for (let si = 0; si < numCells; si++) {
+    const suffix = numCells > 1 ? `${si + 1}` : '';
+    pcMembers.push(
+      { key: `頂版${suffix}`, forces: rebarForces.map(c => c.topSlabs[si]), T: dimensions.t1, pe: prestress.top, e_mm: input.pcSteel_top.e },
+      { key: `底版${suffix}`, forces: rebarForces.map(c => c.bottomSlabs[si]), T: dimensions.t2, pe: prestress.bottom, e_mm: input.pcSteel_bottom.e },
+    );
+  }
 
   for (const pm of pcMembers) {
     // 支間部で最大引張鉄筋量が必要なケースを抽出
