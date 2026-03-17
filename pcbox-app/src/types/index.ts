@@ -1,12 +1,14 @@
 /** 構造寸法 */
 export interface Dimensions {
-  B0: number;   // 内幅 (mm)
+  B0: number;   // 内幅 (mm) — 各セルの内幅
   H0: number;   // 内高 (mm)
   t1: number;   // 頂版厚 (mm)
   t2: number;   // 底版厚 (mm)
   t3: number;   // 左側壁厚 (mm)
   t4: number;   // 右側壁厚 (mm)
   haunch: number; // ハンチ寸法 (mm)
+  numCells: number;  // 連数 (1, 2, 3)
+  midWallThicknesses: number[];  // 中壁厚 (mm)、length = numCells - 1
 }
 
 /** 土被り・舗装 */
@@ -51,6 +53,18 @@ export interface Rebar {
   sigma_sa: number;  // 許容引張応力度
   sigma_sa_c: number;// 許容圧縮応力度
   sigma_sy: number;  // 設計降伏強度
+}
+
+/** 鉄筋配置（1m幅あたり） */
+export interface RebarArrangement {
+  diameter: number;  // 鉄筋径 (mm): 13, 16, 19, 22, 25
+  count: number;     // 本数 (本/m)
+}
+
+/** 部材の鉄筋配置 */
+export interface MemberRebar {
+  outer: RebarArrangement;  // 外側（引張側）鉄筋
+  inner: RebarArrangement;  // 内側（圧縮側）鉄筋
 }
 
 /** PC鋼棒 */
@@ -132,6 +146,13 @@ export interface DesignInput {
   liveLoad: LiveLoadCondition;
   analysis: AnalysisCondition;
   roadSurfaceLoad: number; // 路面上載荷重 (kN/m²)
+  rebarLayout: {
+    topSlab: MemberRebar;     // 頂版
+    bottomSlab: MemberRebar;  // 底版
+    leftWall: MemberRebar;    // 左側壁
+    rightWall: MemberRebar;   // 右側壁
+    midWalls: MemberRebar[];  // 中壁 (length = numCells - 1)
+  };
 }
 
 /** 外力集計行 */
@@ -147,14 +168,28 @@ export interface ForceRow {
 /** 死荷重計算結果 */
 export interface DeadLoadResult {
   selfWeight: {
-    topSlab: number;    // 頂版自重 (kN/m)
+    topSlab: number;    // 頂版自重 (kN/m²)
     leftWall: number;   // 左側壁自重 (kN/m)
     rightWall: number;  // 右側壁自重 (kN/m)
+    bottomSlab: number; // 底版自重 (kN/m²)
+    midWalls: number[]; // 中壁自重 (kN/m) per wall
   };
   surcharge: number;      // 上載荷重 (kN/m²)
   earthPressure: {
     left: { p1: number; p2: number; p3: number; p4: number };  // 各着目位置の土圧
     right: { p1: number; p2: number; p3: number; p4: number };
+  };
+  waterPressure: {
+    outer: {
+      pw_topAxis: number;  // 頂版軸線位置の外水圧 (kN/m²)
+      pw_botAxis: number;  // 底版軸線位置の外水圧 (kN/m²)
+      uplift: number;      // 底版揚圧力 (kN/m²)
+    };
+    inner: {
+      pw_topAxis: number;  // 頂版軸線位置の内水圧 (kN/m²)
+      pw_botAxis: number;  // 底版軸線位置の内水圧 (kN/m²)
+      weight: number;      // 内水重量 (kN/m²)
+    };
   };
   forces: ForceRow[];
   totalV: number;
@@ -184,13 +219,18 @@ export interface MemberForces {
   rightEnd: { M: number; N: number; S: number };
 }
 
-/** ケースごとの全部材断面力 */
+/** ケースごとの全部材断面力（多連対応） */
 export interface CaseForces {
-  topSlab: MemberForces;
-  leftWall: MemberForces;
-  rightWall: MemberForces;
-  bottomSlab: MemberForces;
+  topSlabs: MemberForces[];     // 頂版 (length = numCells)
+  bottomSlabs: MemberForces[];  // 底版 (length = numCells)
+  walls: MemberForces[];        // 壁 (length = numCells + 1: 左壁, 中壁..., 右壁)
 }
+
+/** 旧互換: 1連用アクセサ */
+export function cfTopSlab(cf: CaseForces): MemberForces { return cf.topSlabs[0]; }
+export function cfBottomSlab(cf: CaseForces): MemberForces { return cf.bottomSlabs[0]; }
+export function cfLeftWall(cf: CaseForces): MemberForces { return cf.walls[0]; }
+export function cfRightWall(cf: CaseForces): MemberForces { return cf.walls[cf.walls.length - 1]; }
 
 /** 有効プレストレス結果 */
 export interface PrestressResult {

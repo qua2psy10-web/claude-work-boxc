@@ -6,16 +6,34 @@ function getAxisHeight(input: DesignInput): number {
   return (H0 + t1 / 2 + t2 / 2) / 1000;
 }
 
-/** 軸線幅 (m) */
+/** 全壁厚配列を返す (左壁, 中壁..., 右壁) (mm) */
+function getWallThicknesses(input: DesignInput): number[] {
+  const { t3, t4, midWallThicknesses = [] } = input.dimensions;
+  return [t3, ...midWallThicknesses, t4];
+}
+
+/** 各セルのスパン (壁軸線間距離) を返す (m) */
+function getCellSpans(input: DesignInput): number[] {
+  const { B0, numCells = 1 } = input.dimensions;
+  const walls = getWallThicknesses(input);
+  const spans: number[] = [];
+  for (let i = 0; i < numCells; i++) {
+    spans.push(B0 / 1000 + walls[i] / (2 * 1000) + walls[i + 1] / (2 * 1000));
+  }
+  return spans;
+}
+
+/** 軸線幅 (m) - 全セルの合計スパン */
 function getAxisWidth(input: DesignInput): number {
-  const { B0, t3, t4 } = input.dimensions;
-  return (B0 + t3 / 2 + t4 / 2) / 1000;
+  const spans = getCellSpans(input);
+  return spans.reduce((s, v) => s + v, 0);
 }
 
 /** 外幅 B (m) */
-function getOuterWidth(input: DesignInput): number {
-  const { B0, t3, t4 } = input.dimensions;
-  return (B0 + t3 + t4) / 1000;
+export function getOuterWidth(input: DesignInput): number {
+  const { B0, t3, t4, numCells = 1, midWallThicknesses = [] } = input.dimensions;
+  const midWallSum = midWallThicknesses.reduce((s: number, v: number) => s + v, 0);
+  return (numCells * B0 + t3 + t4 + midWallSum) / 1000;
 }
 
 /** 外高 H (m) */
@@ -49,6 +67,15 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   const w_rightWall_rect = (t4 / 1000) * wallHeight * gamma_c;
   const w_rightWall_haunch = haunchArea * gamma_c;
   const totalRightWall = w_rightWall_rect + w_rightWall_haunch;
+
+  // (4) 中壁自重 (ハンチなし)
+  const midWallThicknesses = dimensions.midWallThicknesses || [];
+  const midWallWeights: number[] = midWallThicknesses.map((tw: number) => {
+    return (tw / 1000) * wallHeight * gamma_c;
+  });
+
+  // (5) 底版
+  const w_bottom = (t2 / 1000) * gamma_c;  // kN/m²
 
   // --- 上載荷重 ---
   // PDF準拠: 舗装 = α × pavementThick × γa, 盛土 = α × soilDepth × γs
@@ -89,6 +116,38 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
     p4: earthPressureIntensity(earthPressure.Ko_right, bottom),
   };
 
+  // --- 水圧計算 ---
+  const gamma_w = unitWeights.gamma_w;
+  const outerWL = input.waterLevel.outer;   // 外水位: 底版下面からの高さ (m)
+  const innerWL = input.waterLevel.inner;   // 内水位: 底版上面からの高さ (m)
+
+  // 側壁軸線位置の高さ (底版下面から)
+  const h_topAxis = (t2 + H0 + t1 / 2) / 1000;
+  const h_botAxis = t2 / (2 * 1000);
+
+  // 外水圧: pw = γw × max(0, 外水位 - h)
+  const wp_outer = {
+    pw_topAxis: gamma_w * Math.max(0, outerWL - h_topAxis),
+    pw_botAxis: gamma_w * Math.max(0, outerWL - h_botAxis),
+    uplift: gamma_w * Math.max(0, outerWL - h_botAxis),  // 底版軸線位置の揚圧
+  };
+
+  // 内水圧: 内水面高さ = 底版上面 + innerWL (底版下面基準に変換)
+  // innerWL=0 は水なしなので全て0
+  // 内水は内空間(底版上面～頂版下面)にのみ作用するため、軸線位置は内空間境界でクランプ
+  const h_innerBottom = t2 / 1000;               // 内空間底 = 底版上面
+  const h_innerTop = (t2 + H0) / 1000;           // 内空間天 = 頂版下面
+  const innerSurface = h_innerBottom + innerWL;   // 底版下面からの内水面高さ
+  const wp_inner = innerWL > 0 ? {
+    pw_topAxis: gamma_w * Math.max(0, innerSurface - h_innerTop),   // 頂版下面での水頭
+    pw_botAxis: gamma_w * Math.max(0, innerWL),                      // 底版上面での水頭 = innerWL
+    weight: gamma_w * innerWL,  // 底版上の内水重量 (kN/m²)
+  } : {
+    pw_topAxis: 0,
+    pw_botAxis: 0,
+    weight: 0,
+  };
+
   // --- 外力集計 ---
   // 基準: 左側壁軸線を原点 (FORUM8準拠)
   const B = axisWidth;  // 基準幅 = 軸線幅
@@ -106,6 +165,30 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   // 右側壁自重 (右側壁軸線位置 = axisWidth)
   forces.push({ label: '右側壁', V: totalRightWall, H: 0, x: axisWidth, y: 0, M: totalRightWall * axisWidth });
 
+  // 中壁自重
+  const cellSpans = getCellSpans(input);
+  for (let i = 0; i < midWallWeights.length; i++) {
+    // x position = sum of cell spans for cells 0..i (wall i+1 in full array)
+    let xPos = 0;
+    for (let j = 0; j <= i; j++) {
+      xPos += cellSpans[j];
+    }
+    forces.push({
+      label: `中壁${i + 1}`,
+      V: midWallWeights[i],
+      H: 0,
+      x: xPos,
+      y: 0,
+      M: midWallWeights[i] * xPos,
+    });
+  }
+
+  // 底版自重 (ignoreBottomSelfWeight=false のとき)
+  if (!input.analysis.ignoreBottomSelfWeight) {
+    const V_bottom = w_bottom * axisWidth;
+    forces.push({ label: '底版', V: V_bottom, H: 0, x: xCenter, y: 0, M: V_bottom * xCenter });
+  }
+
   // 上載荷重 (軸線幅に作用)
   const V_surcharge = w_topLoad * axisWidth;
   forces.push({ label: '上載荷重', V: V_surcharge, H: 0, x: xCenter, y: 0, M: V_surcharge * xCenter });
@@ -120,6 +203,42 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
   const H_rightEP = -0.5 * (ep_right.p2 + ep_right.p3) * axisHeight;
   const y_rightEP = axisHeight * (2 * ep_right.p2 + ep_right.p3) / (3 * (ep_right.p2 + ep_right.p3));
   forces.push({ label: '右側壁土圧', V: 0, H: H_rightEP, x: 0, y: y_rightEP, M: H_rightEP * y_rightEP });
+
+  // 外水圧 (左側壁) - 右向きに作用 (台形分布)
+  if (wp_outer.pw_topAxis > 0 || wp_outer.pw_botAxis > 0) {
+    const H_wpLeft = 0.5 * (wp_outer.pw_topAxis + wp_outer.pw_botAxis) * axisHeight;
+    const y_wpLeft = (wp_outer.pw_topAxis + wp_outer.pw_botAxis) > 0
+      ? axisHeight * (2 * wp_outer.pw_topAxis + wp_outer.pw_botAxis) / (3 * (wp_outer.pw_topAxis + wp_outer.pw_botAxis))
+      : axisHeight / 2;
+    forces.push({ label: '左外水圧', V: 0, H: H_wpLeft, x: 0, y: y_wpLeft, M: H_wpLeft * y_wpLeft });
+
+    // 外水圧 (右側壁) - 左向き (対称)
+    forces.push({ label: '右外水圧', V: 0, H: -H_wpLeft, x: 0, y: y_wpLeft, M: -H_wpLeft * y_wpLeft });
+  }
+
+  // 内水圧 (左側壁) - 左向きに作用 (外水圧と逆)
+  if (wp_inner.pw_topAxis > 0 || wp_inner.pw_botAxis > 0) {
+    const H_wpInnerLeft = -0.5 * (wp_inner.pw_topAxis + wp_inner.pw_botAxis) * axisHeight;
+    const y_wpInnerLeft = (wp_inner.pw_topAxis + wp_inner.pw_botAxis) > 0
+      ? axisHeight * (2 * wp_inner.pw_topAxis + wp_inner.pw_botAxis) / (3 * (wp_inner.pw_topAxis + wp_inner.pw_botAxis))
+      : axisHeight / 2;
+    forces.push({ label: '左内水圧', V: 0, H: H_wpInnerLeft, x: 0, y: y_wpInnerLeft, M: H_wpInnerLeft * y_wpInnerLeft });
+
+    // 内水圧 (右側壁) - 右向き (外水圧と逆)
+    forces.push({ label: '右内水圧', V: 0, H: -H_wpInnerLeft, x: 0, y: y_wpInnerLeft, M: -H_wpInnerLeft * y_wpInnerLeft });
+  }
+
+  // 外水圧揚圧力 (底版に上向き = 鉛直力が負) — 浮力考慮時のみ
+  if (wp_outer.uplift > 0 && input.analysis.considerBuoyancy) {
+    const V_uplift = -wp_outer.uplift * axisWidth;
+    forces.push({ label: '揚圧力', V: V_uplift, H: 0, x: xCenter, y: 0, M: V_uplift * xCenter });
+  }
+
+  // 内水重量 (底版に下向き)
+  if (wp_inner.weight > 0) {
+    const V_innerW = wp_inner.weight * axisWidth;
+    forces.push({ label: '内水重量', V: V_innerW, H: 0, x: xCenter, y: 0, M: V_innerW * xCenter });
+  }
 
   const totalV = forces.reduce((s, f) => s + f.V, 0);
   const totalM = forces.reduce((s, f) => s + f.M, 0);
@@ -136,9 +255,12 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
       topSlab: w_top,
       leftWall: totalLeftWall / wallHeight,
       rightWall: totalRightWall / wallHeight,
+      bottomSlab: w_bottom,
+      midWalls: midWallWeights.map(w => w / wallHeight),
     },
     surcharge: totalSurcharge,
     earthPressure: { left: ep_left, right: ep_right },
+    waterPressure: { outer: wp_outer, inner: wp_inner },
     forces,
     totalV,
     totalM,
@@ -149,7 +271,7 @@ export function calcDeadLoad(input: DesignInput): DeadLoadResult {
 
 /** 活荷重計算 Case-1: T荷重 */
 export function calcLiveLoad1(input: DesignInput): LiveLoadResult {
-  const { liveLoad, coverSoil, dimensions } = input;
+  const { liveLoad, coverSoil } = input;
   const { P, i, beta, D0 } = liveLoad;
 
   const axisWidth = getAxisWidth(input);
@@ -198,8 +320,6 @@ export function calcLiveLoad2(input: DesignInput): LiveLoadResult {
   const { liveLoad, earthPressure } = input;
 
   const axisHeight = getAxisHeight(input);
-  const axisWidth = getAxisWidth(input);
-  const B = axisWidth;
 
   // 側圧 (等分布)
   const p_left = earthPressure.Ko_left * liveLoad.wl;

@@ -12,6 +12,7 @@ import InputPanel from './components/InputPanel';
 import CrossSection from './components/CrossSection';
 import ResultTabs from './components/ResultTabs';
 import SummaryPanel from './components/SummaryPanel';
+import ExportButtons from './components/ExportButtons';
 
 function runCalculation(input: DesignInput): CalcResults {
   const deadLoad = calcDeadLoad(input);
@@ -21,12 +22,7 @@ function runCalculation(input: DesignInput): CalcResults {
   const { deadForces, live1Forces, live2Forces } = runFrameAnalysis(input, deadLoad, liveLoad1, liveLoad2);
   const sectionForces = calcSectionForces(deadForces, live1Forces, live2Forces);
 
-  const prestress = calcPrestress(input, {
-    topSlab: deadForces.topSlab,
-    leftWall: deadForces.leftWall,
-    rightWall: deadForces.rightWall,
-    bottomSlab: deadForces.bottomSlab,
-  });
+  const prestress = calcPrestress(input, deadForces);
 
   const stressCheck = runStressCheck(input, sectionForces.stress, prestress);
   const rebarCheck = runRebarCheck(input, sectionForces.rebar, prestress);
@@ -55,7 +51,7 @@ export default function App() {
   const [results, setResults] = React.useState<CalcResults | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  const handleCalc = () => {
+  const handleCalc = React.useCallback(() => {
     try {
       setError(null);
       const r = runCalculation(input);
@@ -64,7 +60,13 @@ export default function App() {
       setError(e.message || '計算エラーが発生しました');
       console.error(e);
     }
-  };
+  }, [input]);
+
+  // 入力変更時に自動計算
+  React.useEffect(() => {
+    const timer = setTimeout(handleCalc, 300);
+    return () => clearTimeout(timer);
+  }, [handleCalc]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -76,7 +78,7 @@ export default function App() {
           className="lg:w-96 border-r border-gray-200 bg-white overflow-y-auto"
           style={{ maxHeight: 'calc(100vh - 52px)' }}
         >
-          <InputPanel input={input} onChange={setInput} onCalc={handleCalc} />
+          <InputPanel input={input} onChange={setInput} onReset={() => setInput(defaultInput)} />
         </div>
         <div
           className="flex-1 p-4 overflow-y-auto"
@@ -88,15 +90,12 @@ export default function App() {
               {error}
             </div>
           )}
-          {results ? (
+          {results && (
             <>
+              <ExportButtons input={input} results={results} />
               <SummaryPanel results={results} />
               <ResultTabs results={results} input={input} />
             </>
-          ) : (
-            <div className="text-center text-gray-400 py-20">
-              <p>「計算実行」ボタンを押して計算を開始してください</p>
-            </div>
           )}
         </div>
       </div>

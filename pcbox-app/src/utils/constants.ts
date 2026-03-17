@@ -10,6 +10,8 @@ export const defaultInput: DesignInput = {
     t3: 200,    // 左側壁厚 200mm
     t4: 200,    // 右側壁厚 200mm
     haunch: 300, // ハンチ 300mm
+    numCells: 1,
+    midWallThicknesses: [],
   },
   coverSoil: {
     soilDepth: 2.800,    // 土被り高 2.8m
@@ -109,4 +111,44 @@ export const defaultInput: DesignInput = {
     ignoreBottomSelfWeight: true,
   },
   roadSurfaceLoad: 0.000,
+  rebarLayout: {
+    topSlab: {
+      outer: { diameter: 13, count: 5 },   // D13 × 5本/m
+      inner: { diameter: 13, count: 5 },
+    },
+    bottomSlab: {
+      outer: { diameter: 13, count: 5 },
+      inner: { diameter: 13, count: 5 },
+    },
+    leftWall: {
+      outer: { diameter: 19, count: 5 },   // D19 × 5本/m = 14.325 cm²/m
+      inner: { diameter: 10, count: 5 },    // D10 × 5本/m = 3.567 cm²/m
+    },
+    rightWall: {
+      outer: { diameter: 19, count: 5 },
+      inner: { diameter: 10, count: 5 },
+    },
+    midWalls: [],
+  },
 };
+
+/** 鉄筋径 → 1本あたりの断面積 (mm²) */
+const REBAR_AREA: Record<number, number> = {
+  10: 71.33,
+  13: 126.7,
+  16: 198.6,
+  19: 286.5,
+  22: 387.1,
+  25: 506.7,
+  29: 642.4,
+  32: 794.2,
+};
+
+/** 鉄筋配置から断面積を計算 (mm²/m) */
+export function calcRebarArea(diameter: number, count: number): number {
+  const area = REBAR_AREA[diameter] || (Math.PI * diameter * diameter / 4);
+  return area * count;
+}
+
+/** 利用可能な鉄筋径リスト */
+export const REBAR_DIAMETERS = [10, 13, 16, 19, 22, 25, 29, 32];

@@ -67,6 +67,43 @@ export default function LoadResult({ results }: Props) {
           </div>
         </div>
 
+        {(deadLoad.waterPressure.outer.pw_botAxis > 0 || deadLoad.waterPressure.inner.pw_botAxis > 0) && (
+          <div className="mb-3">
+            <h4 className="font-bold mb-1">水圧強度</h4>
+            <table className="border-collapse border border-gray-300 text-xs">
+              <thead>
+                <tr>
+                  <th className="border px-2 py-1">着目位置</th>
+                  <th className="border px-2 py-1">外水圧 (kN/m²)</th>
+                  <th className="border px-2 py-1">内水圧 (kN/m²)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border px-2 py-1">頂版軸線</td>
+                  <td className="border px-2 py-1 text-right">{fmt(deadLoad.waterPressure.outer.pw_topAxis)}</td>
+                  <td className="border px-2 py-1 text-right">{fmt(deadLoad.waterPressure.inner.pw_topAxis)}</td>
+                </tr>
+                <tr>
+                  <td className="border px-2 py-1">底版軸線</td>
+                  <td className="border px-2 py-1 text-right">{fmt(deadLoad.waterPressure.outer.pw_botAxis)}</td>
+                  <td className="border px-2 py-1 text-right">{fmt(deadLoad.waterPressure.inner.pw_botAxis)}</td>
+                </tr>
+                <tr>
+                  <td className="border px-2 py-1">底版揚圧</td>
+                  <td className="border px-2 py-1 text-right">{fmt(deadLoad.waterPressure.outer.uplift)}</td>
+                  <td className="border px-2 py-1 text-right">—</td>
+                </tr>
+                <tr>
+                  <td className="border px-2 py-1">内水重量</td>
+                  <td className="border px-2 py-1 text-right">—</td>
+                  <td className="border px-2 py-1 text-right">{fmt(deadLoad.waterPressure.inner.weight)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
         <div className="mb-3">
           <h4 className="font-bold mb-1">外力集計</h4>
           <table className="border-collapse border border-gray-300 text-xs">

@@ -1,10 +1,12 @@
 import React from 'react';
-import { DesignInput } from '../types';
+import { DesignInput, MemberRebar, RebarArrangement } from '../types';
+import { REBAR_DIAMETERS } from '../utils/constants';
 
 interface Props {
   input: DesignInput;
   onChange: (input: DesignInput) => void;
-  onCalc: () => void;
+  onReset: () => void;
+  onImport?: (input: DesignInput) => void;
 }
 
 function NumField({ label, value, onChange, unit, step, min, max }: {
@@ -84,12 +86,44 @@ function validateInput(input: DesignInput): string[] {
   return errors;
 }
 
-export default function InputPanel({ input, onChange, onCalc }: Props) {
+export default function InputPanel({ input, onChange, onReset, onImport }: Props) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        const imported = json.input || json;
+        if (imported.dimensions && imported.unitWeights) {
+          // defaultInputとマージして欠落フィールドを補完
+          const merged = { ...input, ...imported };
+          for (const key of Object.keys(input) as (keyof DesignInput)[]) {
+            if (typeof input[key] === 'object' && input[key] !== null && !Array.isArray(input[key])) {
+              (merged as any)[key] = { ...(input[key] as any), ...((imported[key] as any) || {}) };
+            }
+          }
+          onChange(merged);
+          if (onImport) onImport(merged);
+        } else {
+          alert('無効なJSONファイルです。PCボックスカルバートの設計データではありません。');
+        }
+      } catch {
+        alert('JSONの読み込みに失敗しました。');
+      }
+    };
+    reader.readAsText(file);
+    // リセットして同じファイルを再選択可能に
+    e.target.value = '';
+  };
   const update = <K extends keyof DesignInput>(key: K) =>
     <F extends keyof DesignInput[K]>(field: F) =>
       (v: number) => {
-        const newInput = { ...input, [key]: { ...input[key], [field]: v } };
-        onChange(newInput);
+        const section = input[key];
+        const newInput = { ...input, [key]: { ...(section as object), [field]: v } };
+        onChange(newInput as DesignInput);
       };
 
   const dim = update('dimensions');
@@ -114,6 +148,47 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
         <NumField label="左側壁厚 t₃" value={input.dimensions.t3} onChange={dim('t3')} unit="mm" step={10} min={100} max={2000} />
         <NumField label="右側壁厚 t₄" value={input.dimensions.t4} onChange={dim('t4')} unit="mm" step={10} min={100} max={2000} />
         <NumField label="ハンチ" value={input.dimensions.haunch} onChange={dim('haunch')} unit="mm" step={50} min={0} max={1000} />
+        <div className="mb-1">
+          <div className="flex items-center gap-2">
+            <label className="text-sm w-40 text-right shrink-0">連数</label>
+            <select
+              className="border rounded px-2 py-1 w-28 text-sm border-gray-300"
+              value={input.dimensions.numCells}
+              onChange={e => {
+                const n = Number(e.target.value);
+                const midWalls = [...input.dimensions.midWallThicknesses];
+                // 中壁数を調整
+                while (midWalls.length < n - 1) midWalls.push(input.dimensions.t3);
+                while (midWalls.length > n - 1) midWalls.pop();
+                const midRebarWalls = [...input.rebarLayout.midWalls];
+                while (midRebarWalls.length < n - 1) midRebarWalls.push({ ...input.rebarLayout.leftWall });
+                while (midRebarWalls.length > n - 1) midRebarWalls.pop();
+                onChange({
+                  ...input,
+                  dimensions: { ...input.dimensions, numCells: n, midWallThicknesses: midWalls },
+                  rebarLayout: { ...input.rebarLayout, midWalls: midRebarWalls },
+                });
+              }}
+            >
+              <option value={1}>1連</option>
+              <option value={2}>2連</option>
+              <option value={3}>3連</option>
+            </select>
+          </div>
+        </div>
+        {input.dimensions.midWallThicknesses.map((tw, i) => (
+          <NumField
+            key={`midwall-${i}`}
+            label={`中壁${i + 1}厚`}
+            value={tw}
+            onChange={v => {
+              const newMids = [...input.dimensions.midWallThicknesses];
+              newMids[i] = v;
+              onChange({ ...input, dimensions: { ...input.dimensions, midWallThicknesses: newMids } });
+            }}
+            unit="mm" step={10} min={100} max={2000}
+          />
+        ))}
       </Section>
 
       <Section title="土被り・舗装">
@@ -137,6 +212,30 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
       <Section title="水位">
         <NumField label="外水位" value={input.waterLevel.outer} onChange={wl('outer')} unit="m" min={0} />
         <NumField label="内水位" value={input.waterLevel.inner} onChange={wl('inner')} unit="m" min={0} />
+        <div className="mb-1 flex items-center gap-2 ml-40">
+          <input
+            type="checkbox"
+            id="buoyancy"
+            checked={input.analysis.considerBuoyancy}
+            onChange={e => onChange({
+              ...input,
+              analysis: { ...input.analysis, considerBuoyancy: e.target.checked }
+            })}
+          />
+          <label htmlFor="buoyancy" className="text-sm">浮力考慮</label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="ignoreBottomSW"
+            checked={input.analysis.ignoreBottomSelfWeight}
+            onChange={e => onChange({
+              ...input,
+              analysis: { ...input.analysis, ignoreBottomSelfWeight: e.target.checked }
+            })}
+          />
+          <label htmlFor="ignoreBottomSW" className="text-sm">底版自重無視</label>
+        </div>
       </Section>
 
       <Section title="鉄筋かぶり">
@@ -148,6 +247,49 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
         <NumField label="左側壁内側" value={input.cover.left_inner} onChange={cv('left_inner')} unit="cm" step={0.5} min={2} max={15} />
         <NumField label="右側壁外側" value={input.cover.right_outer} onChange={cv('right_outer')} unit="cm" step={0.5} min={2} max={15} />
         <NumField label="右側壁内側" value={input.cover.right_inner} onChange={cv('right_inner')} unit="cm" step={0.5} min={2} max={15} />
+      </Section>
+
+      <Section title="鉄筋配置">
+        {(['topSlab', 'bottomSlab', 'leftWall', 'rightWall'] as const).map(member => {
+          const labels: Record<string, string> = { topSlab: '頂版', bottomSlab: '底版', leftWall: '左側壁', rightWall: '右側壁' };
+          const mr = input.rebarLayout[member];
+          const updateRebar = (side: 'outer' | 'inner', field: keyof RebarArrangement, v: number) => {
+            const updated: MemberRebar = {
+              ...mr,
+              [side]: { ...mr[side], [field]: v },
+            };
+            onChange({ ...input, rebarLayout: { ...input.rebarLayout, [member]: updated } });
+          };
+          return (
+            <div key={member} className="mb-2">
+              <div className="text-xs font-semibold text-gray-600 mb-1">{labels[member]}</div>
+              <div className="grid grid-cols-3 gap-1 text-xs items-center">
+                <span>外側</span>
+                <select className="border rounded px-1 py-0.5" value={mr.outer.diameter}
+                  onChange={e => updateRebar('outer', 'diameter', Number(e.target.value))}>
+                  {REBAR_DIAMETERS.map(d => <option key={d} value={d}>D{d}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <input type="number" className="border rounded px-1 py-0.5 w-14" value={mr.outer.count}
+                    step={0.5} min={1} max={20}
+                    onChange={e => updateRebar('outer', 'count', Number(e.target.value))} />
+                  <span>本/m</span>
+                </div>
+                <span>内側</span>
+                <select className="border rounded px-1 py-0.5" value={mr.inner.diameter}
+                  onChange={e => updateRebar('inner', 'diameter', Number(e.target.value))}>
+                  {REBAR_DIAMETERS.map(d => <option key={d} value={d}>D{d}</option>)}
+                </select>
+                <div className="flex items-center gap-1">
+                  <input type="number" className="border rounded px-1 py-0.5 w-14" value={mr.inner.count}
+                    step={0.5} min={1} max={20}
+                    onChange={e => updateRebar('inner', 'count', Number(e.target.value))} />
+                  <span>本/m</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </Section>
 
       <Section title="活荷重条件">
@@ -170,14 +312,24 @@ export default function InputPanel({ input, onChange, onCalc }: Props) {
       )}
 
       <button
-        className={`w-full py-3 rounded font-bold text-lg mt-4 mb-4 ${
-          errors.length > 0
-            ? 'bg-blue-400 text-white hover:bg-blue-500'
-            : 'bg-blue-600 text-white hover:bg-blue-700'
-        }`}
-        onClick={onCalc}
+        className="w-full py-2 rounded font-bold text-sm mt-4 mb-2 border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+        onClick={onReset}
       >
-        計算実行
+        初期値に戻す
+      </button>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={handleImport}
+      />
+      <button
+        className="w-full py-2 rounded font-bold text-sm mb-4 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+        onClick={() => fileInputRef.current?.click()}
+      >
+        JSON読み込み
       </button>
     </div>
   );

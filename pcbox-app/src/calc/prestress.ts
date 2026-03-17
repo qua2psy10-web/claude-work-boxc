@@ -1,4 +1,4 @@
-import { DesignInput, PrestressResult, CaseForces } from '../types';
+import { DesignInput, PrestressResult, CaseForces, cfTopSlab, cfBottomSlab } from '../types';
 
 /**
  * 有効プレストレス計算
@@ -9,8 +9,8 @@ export function calcPrestress(
   deadForces: CaseForces,
 ): { top: PrestressResult; bottom: PrestressResult } {
   return {
-    top: calcPrestressForMember(input, input.pcSteel_top, input.dimensions.t1, deadForces.topSlab.midspan.M),
-    bottom: calcPrestressForMember(input, input.pcSteel_bottom, input.dimensions.t2, deadForces.bottomSlab.midspan.M),
+    top: calcPrestressForMember(input, input.pcSteel_top, input.dimensions.t1, cfTopSlab(deadForces).midspan.M),
+    bottom: calcPrestressForMember(input, input.pcSteel_bottom, input.dimensions.t2, cfBottomSlab(deadForces).midspan.M),
   };
 }
 
