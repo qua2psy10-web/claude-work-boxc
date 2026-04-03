@@ -1,83 +1,41 @@
 import { DesignInput } from '../types';
 
-/** PDFサンプルに基づくデフォルト入力値 */
+/** FORUM8 BOX123 参照PDFに基づくデフォルト入力値（RC構造） */
 export const defaultInput: DesignInput = {
   dimensions: {
-    B0: 3000,   // 内幅 3000mm
-    H0: 2500,   // 内高 2500mm
-    t1: 250,    // 頂版厚 250mm
-    t2: 250,    // 底版厚 250mm
-    t3: 200,    // 左側壁厚 200mm
-    t4: 200,    // 右側壁厚 200mm
+    B0: 4000,   // 内幅 4000mm
+    H0: 3000,   // 内高 3000mm
+    t1: 400,    // 頂版厚 400mm
+    t2: 450,    // 底版厚 450mm
+    t3: 350,    // 左側壁厚 350mm
+    t4: 350,    // 右側壁厚 350mm
     haunch: 300, // ハンチ 300mm
     numCells: 1,
     midWallThicknesses: [],
   },
   coverSoil: {
-    soilDepth: 2.800,    // 土被り高 2.8m
-    pavementThick: 0.200, // 舗装厚 0.2m
-  },
-  pcConcrete: {
-    sigma_ck: 40.0,
-    Ec: 3.10e4,
-    psi: 2.80,
-    eps_s: 20.00e-5,
-    sigma_ca_general_dead: 15.00,
-    sigma_ca_general_design: 15.00,
-    sigma_ca_haunch_dead: 15.00,
-    sigma_ca_haunch_design: 15.00,
-    sigma_ca_nohaunch_dead: 11.25,
-    sigma_ca_nohaunch_design: 11.25,
-    sigma_ta_dead: 0.00,
-    sigma_ta_design: 1.50,
-    tau_a1: 0.550,
-    tau_a2: 2.400,
+    soilDepth: 2.000,     // 土被り高 2.0m
+    pavementThick: 0.080, // 舗装厚 0.08m
   },
   rcConcrete: {
-    sigma_ck: 40.0,
-    Ec: 3.10e4,
-    sigma_ca_general: 14.00,
-    sigma_ca_haunch: 14.00,
-    sigma_ca_nohaunch: 10.50,
-    tau_a1: 0.550,
-    tau_a2: 2.400,
-    f_cd: 40.0,
+    sigma_ck: 24.0,
+    Ec: 2.50e4,
+    sigma_ca: 8.0,    // 許容曲げ圧縮応力度
+    tau_a1: 0.23,     // 許容せん断応力度（コンクリートのみ）
+    tau_a2: 0.90,     // 許容せん断応力度（斜引張鉄筋と共同）
+    f_cd: 24.0,       // 設計圧縮強度
   },
   rebar: {
     grade: 'SD345',
-    sigma_sa: 180.00,
-    sigma_sa_c: 200.00,
-    sigma_sy: 345.0,
-  },
-  pcSteel_top: {
-    name: 'C種1号 SBPR1080/1230 21mm',
-    sigma_pu: 1230.0,
-    sigma_py: 1080.0,
-    sigma_pt: 861.0,
-    Ap: 346.40,
-    gamma: 3.00,
-    Ep: 2.00e5,
-    N: 10,
-    e: 10,   // 偏心量 mm
-    L: 2.000, // ブロック長 m
-  },
-  pcSteel_bottom: {
-    name: 'C種1号 SBPR1080/1230 21mm',
-    sigma_pu: 1230.0,
-    sigma_py: 1080.0,
-    sigma_pt: 861.0,
-    Ap: 346.40,
-    gamma: 3.00,
-    Ep: 2.00e5,
-    N: 10,
-    e: 10,
-    L: 2.000,
+    sigma_sa: 200.00,   // 許容引張応力度
+    sigma_sa_c: 200.00, // 許容圧縮応力度
+    sigma_sy: 345.0,    // 設計降伏強度
   },
   unitWeights: {
     gamma_c: 24.50,
     gamma_w: 10.00,
     gamma_a: 22.50,
-    gamma_s: 18.00,
+    gamma_s: 19.00,
   },
   earthPressure: {
     alpha: 1.000,
@@ -89,20 +47,20 @@ export const defaultInput: DesignInput = {
     inner: 0.000,
   },
   cover: {
-    top_upper: 3.5,
-    top_lower: 3.5,
-    bottom_upper: 3.5,
-    bottom_lower: 3.5,
-    left_outer: 3.5,
-    left_inner: 3.5,
-    right_outer: 3.5,
-    right_inner: 3.5,
+    top_upper: 7.0,    // 頂版上側かぶり (cm)
+    top_lower: 7.0,    // 頂版下側かぶり (cm)
+    bottom_upper: 7.0, // 底版上側かぶり (cm)
+    bottom_lower: 7.0, // 底版下側かぶり (cm)
+    left_outer: 7.0,   // 左側壁外側かぶり (cm)
+    left_inner: 7.0,   // 左側壁内側かぶり (cm)
+    right_outer: 7.0,  // 右側壁外側かぶり (cm)
+    right_inner: 7.0,  // 右側壁内側かぶり (cm)
   },
   liveLoad: {
-    P: 100.0,     // 輪荷重 100kN (T荷重 単軸 250kN → 片側100kN)
+    P: 100.0,     // 輪荷重 100kN
     i: 0.300,     // 衝撃係数
     beta: 0.900,  // 低減係数
-    D0: 0.20,     // 接地幅 0.20m
+    D0: 0.200,    // 接地幅 0.20m
     wl: 10.00,    // 側圧用荷重 10kN/m²
   },
   analysis: {
@@ -113,20 +71,20 @@ export const defaultInput: DesignInput = {
   roadSurfaceLoad: 0.000,
   rebarLayout: {
     topSlab: {
-      outer: { diameter: 13, count: 5 },   // D13 × 5本/m
-      inner: { diameter: 13, count: 5 },
+      outer: { diameter: 22, count: 5 },   // D22 × 5本/m
+      inner: { diameter: 16, count: 5 },   // D16 × 5本/m
     },
     bottomSlab: {
-      outer: { diameter: 13, count: 5 },
-      inner: { diameter: 13, count: 5 },
+      outer: { diameter: 25, count: 5 },   // D25 × 5本/m
+      inner: { diameter: 16, count: 5 },   // D16 × 5本/m
     },
     leftWall: {
-      outer: { diameter: 19, count: 5 },   // D19 × 5本/m = 14.325 cm²/m
-      inner: { diameter: 10, count: 5 },    // D10 × 5本/m = 3.567 cm²/m
+      outer: { diameter: 19, count: 5 },   // D19 × 5本/m
+      inner: { diameter: 16, count: 5 },   // D16 × 5本/m
     },
     rightWall: {
       outer: { diameter: 19, count: 5 },
-      inner: { diameter: 10, count: 5 },
+      inner: { diameter: 16, count: 5 },
     },
     midWalls: [],
   },

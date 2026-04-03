@@ -77,7 +77,7 @@ function getFrameModel(input: DesignInput) {
     nodes.push({ x: xPositions[i], y: 0 });
   }
 
-  const Ec = input.pcConcrete.Ec * 1000; // N/mm² → kN/m²
+  const Ec = input.rcConcrete.Ec * 1000; // N/mm² → kN/m²
   const b = 1.0; // 1m幅
 
   const members: Member[] = [];

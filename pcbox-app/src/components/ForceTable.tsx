@@ -67,11 +67,10 @@ function MemberTable({ title, cases, getMember, caseLabels }: {
 
 export default function ForceTable({ results, input }: Props) {
   const numCells = input.dimensions.numCells;
-  const [section, setSection] = React.useState<'stress' | 'rebar' | 'safety1' | 'safety2' | 'safety3'>('stress');
+  const [section, setSection] = React.useState<'stress' | 'safety1' | 'safety2' | 'safety3'>('stress');
 
   const sectionLabels = {
     stress: '応力度照査用',
-    rebar: '引張鉄筋量照査用 (死+1.35×活)',
     safety1: '破壊安全度-1 (1.3×死+2.5×活)',
     safety2: '破壊安全度-2 (1.0×死+2.5×活)',
     safety3: '破壊安全度-3 (1.7×(死+活))',
@@ -79,7 +78,6 @@ export default function ForceTable({ results, input }: Props) {
 
   const caseLabelsMap: Record<string, string[]> = {
     stress: ['D', 'D+L1', 'D+L2', 'D+L1+L2'],
-    rebar: ['D', 'D+1.35L1', 'D+1.35L2', 'D+1.35(L1+L2)'],
     safety1: ['1.3D', '1.3D+2.5L1', '1.3D+2.5L2', '1.3D+2.5(L1+L2)'],
     safety2: ['D', 'D+2.5L1', 'D+2.5L2', 'D+2.5(L1+L2)'],
     safety3: ['1.7D', '1.7(D+L1)', '1.7(D+L2)', '1.7(D+L1+L2)'],

@@ -108,7 +108,7 @@ export default function InputPanel({ input, onChange, onReset, onImport }: Props
           onChange(merged);
           if (onImport) onImport(merged);
         } else {
-          alert('無効なJSONファイルです。PCボックスカルバートの設計データではありません。');
+          alert('無効なJSONファイルです。RCボックスカルバートの設計データではありません。');
         }
       } catch {
         alert('JSONの読み込みに失敗しました。');
@@ -128,6 +128,8 @@ export default function InputPanel({ input, onChange, onReset, onImport }: Props
 
   const dim = update('dimensions');
   const cs = update('coverSoil');
+  const rc = update('rcConcrete');
+  const rb = update('rebar');
   const uw = update('unitWeights');
   const ep = update('earthPressure');
   const wl = update('waterLevel');
@@ -189,6 +191,21 @@ export default function InputPanel({ input, onChange, onReset, onImport }: Props
             unit="mm" step={10} min={100} max={2000}
           />
         ))}
+      </Section>
+
+      <Section title="コンクリート材料（RC）">
+        <NumField label="設計基準強度 σck" value={input.rcConcrete.sigma_ck} onChange={rc('sigma_ck')} unit="N/mm²" step={1} min={18} max={60} />
+        <NumField label="ヤング係数 Ec" value={input.rcConcrete.Ec} onChange={rc('Ec')} unit="N/mm²" step={1000} min={10000} max={50000} />
+        <NumField label="許容曲げ圧縮 σca" value={input.rcConcrete.sigma_ca} onChange={rc('sigma_ca')} unit="N/mm²" step={0.5} min={1} max={20} />
+        <NumField label="設計圧縮強度 f'cd" value={input.rcConcrete.f_cd} onChange={rc('f_cd')} unit="N/mm²" step={1} min={18} max={60} />
+        <NumField label="許容せん断 τa1" value={input.rcConcrete.tau_a1} onChange={rc('tau_a1')} unit="N/mm²" step={0.01} min={0.01} max={2} />
+        <NumField label="許容せん断 τa2" value={input.rcConcrete.tau_a2} onChange={rc('tau_a2')} unit="N/mm²" step={0.05} min={0.1} max={5} />
+      </Section>
+
+      <Section title="鉄筋材料">
+        <NumField label="許容引張 σsa" value={input.rebar.sigma_sa} onChange={rb('sigma_sa')} unit="N/mm²" step={10} min={100} max={400} />
+        <NumField label="許容圧縮 σsa'" value={input.rebar.sigma_sa_c} onChange={rb('sigma_sa_c')} unit="N/mm²" step={10} min={100} max={400} />
+        <NumField label="設計降伏強度 σsy" value={input.rebar.sigma_sy} onChange={rb('sigma_sy')} unit="N/mm²" step={10} min={100} max={500} />
       </Section>
 
       <Section title="土被り・舗装">
