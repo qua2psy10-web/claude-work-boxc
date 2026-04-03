@@ -17,34 +17,14 @@ export interface CoverSoil {
   pavementThick: number; // 舗装厚 (m)
 }
 
-/** プレストレストコンクリート材料 */
-export interface PCConcrete {
+/** RCコンクリート材料 */
+export interface RCConcrete {
   sigma_ck: number;   // 設計基準強度 (N/mm²)
   Ec: number;         // ヤング係数 (N/mm²)
-  psi: number;        // クリープ係数
-  eps_s: number;      // 乾燥収縮度
-  sigma_ca_general_dead: number;   // 許容曲げ圧縮応力度 一般部 死荷重時
-  sigma_ca_general_design: number; // 許容曲げ圧縮応力度 一般部 設計荷重時
-  sigma_ca_haunch_dead: number;    // 隅角部ハンチ有 死荷重時
-  sigma_ca_haunch_design: number;  // 隅角部ハンチ有 設計荷重時
-  sigma_ca_nohaunch_dead: number;  // 隅角部ハンチ無 死荷重時
-  sigma_ca_nohaunch_design: number;// 隅角部ハンチ無 設計荷重時
-  sigma_ta_dead: number;  // 許容曲げ引張応力度 死荷重時
-  sigma_ta_design: number;// 許容曲げ引張応力度 設計荷重時
-  tau_a1: number;    // 許容せん断応力度（コンクリートのみ）
-  tau_a2: number;    // 許容せん断応力度（斜引張鉄筋と共同）
-}
-
-/** RC コンクリート材料 */
-export interface RCConcrete {
-  sigma_ck: number;
-  Ec: number;
-  sigma_ca_general: number;
-  sigma_ca_haunch: number;
-  sigma_ca_nohaunch: number;
-  tau_a1: number;
-  tau_a2: number;
-  f_cd: number; // 設計圧縮強度
+  sigma_ca: number;   // 許容曲げ圧縮応力度
+  tau_a1: number;     // 許容せん断応力度（コンクリートのみ）
+  tau_a2: number;     // 許容せん断応力度（斜引張鉄筋と共同）
+  f_cd: number;       // 設計圧縮強度
 }
 
 /** 鉄筋 */
@@ -65,20 +45,6 @@ export interface RebarArrangement {
 export interface MemberRebar {
   outer: RebarArrangement;  // 外側（引張側）鉄筋
   inner: RebarArrangement;  // 内側（圧縮側）鉄筋
-}
-
-/** PC鋼棒 */
-export interface PCSteel {
-  name: string;
-  sigma_pu: number;  // 引張応力度
-  sigma_py: number;  // 降伏点強度
-  sigma_pt: number;  // プレストレッシング直後の引張応力度
-  Ap: number;        // 断面積 (mm²)
-  gamma: number;     // リラクセーション率 (%)
-  Ep: number;        // ヤング係数 (N/mm²)
-  N: number;         // 本数
-  e: number;         // 偏心量 (mm)
-  L: number;         // ブロック長 (m)
 }
 
 /** 単位重量 */
@@ -134,11 +100,8 @@ export interface AnalysisCondition {
 export interface DesignInput {
   dimensions: Dimensions;
   coverSoil: CoverSoil;
-  pcConcrete: PCConcrete;
   rcConcrete: RCConcrete;
   rebar: Rebar;
-  pcSteel_top: PCSteel;
-  pcSteel_bottom: PCSteel;
   unitWeights: UnitWeights;
   earthPressure: EarthPressure;
   waterLevel: WaterLevel;
@@ -176,19 +139,19 @@ export interface DeadLoadResult {
   };
   surcharge: number;      // 上載荷重 (kN/m²)
   earthPressure: {
-    left: { p1: number; p2: number; p3: number; p4: number };  // 各着目位置の土圧
+    left: { p1: number; p2: number; p3: number; p4: number };
     right: { p1: number; p2: number; p3: number; p4: number };
   };
   waterPressure: {
     outer: {
-      pw_topAxis: number;  // 頂版軸線位置の外水圧 (kN/m²)
-      pw_botAxis: number;  // 底版軸線位置の外水圧 (kN/m²)
-      uplift: number;      // 底版揚圧力 (kN/m²)
+      pw_topAxis: number;
+      pw_botAxis: number;
+      uplift: number;
     };
     inner: {
-      pw_topAxis: number;  // 頂版軸線位置の内水圧 (kN/m²)
-      pw_botAxis: number;  // 底版軸線位置の内水圧 (kN/m²)
-      weight: number;      // 内水重量 (kN/m²)
+      pw_topAxis: number;
+      pw_botAxis: number;
+      weight: number;
     };
   };
   forces: ForceRow[];
@@ -200,8 +163,8 @@ export interface DeadLoadResult {
 
 /** 活荷重計算結果 */
 export interface LiveLoadResult {
-  Pl_i: number;    // BOX縦方向単位長さ当りの活荷重
-  Pvl: number;     // 換算等分布活荷重
+  Pl_i: number;
+  Pvl: number;
   forces: ForceRow[];
   totalV: number;
   totalM: number;
@@ -221,9 +184,9 @@ export interface MemberForces {
 
 /** ケースごとの全部材断面力（多連対応） */
 export interface CaseForces {
-  topSlabs: MemberForces[];     // 頂版 (length = numCells)
-  bottomSlabs: MemberForces[];  // 底版 (length = numCells)
-  walls: MemberForces[];        // 壁 (length = numCells + 1: 左壁, 中壁..., 右壁)
+  topSlabs: MemberForces[];
+  bottomSlabs: MemberForces[];
+  walls: MemberForces[];
 }
 
 /** 旧互換: 1連用アクセサ */
@@ -232,32 +195,22 @@ export function cfBottomSlab(cf: CaseForces): MemberForces { return cf.bottomSla
 export function cfLeftWall(cf: CaseForces): MemberForces { return cf.walls[0]; }
 export function cfRightWall(cf: CaseForces): MemberForces { return cf.walls[cf.walls.length - 1]; }
 
-/** 有効プレストレス結果 */
-export interface PrestressResult {
-  Pt: number;           // 初期引張力
-  delta_sigma_pr: number; // リラクセーション減少量
-  delta_sigma_ppsi: number; // クリープ・乾燥収縮減少量
-  sigma_pe: number;     // 有効引張応力度
-  Pe: number;           // 有効引張力
-  Ap_per_m: number;     // 単位幅当りPC鋼棒断面積
-}
-
-/** 応力度照査結果（1照査点） */
-export interface StressCheckPoint {
+/** RC応力度照査結果（1照査点） */
+export interface RCStressCheckPoint {
   M: number;
   N: number;
-  Pe: number;
   b: number;
   h: number;
-  Ac: number;
-  Zc: number;
-  e: number;
-  sigma_c: number;   // 圧縮応力度
-  sigma_t: number;   // 引張応力度
-  sigma_ca: number;  // 許容圧縮応力度
-  sigma_ta: number;  // 許容引張応力度
+  d: number;
+  As: number;     // 引張鉄筋量 mm²
+  sigma_c: number;
+  sigma_s: number;
+  sigma_ca: number;
+  sigma_sa: number;
+  x: number;   // 中立軸 cm
   ok_c: boolean;
-  ok_t: boolean;
+  ok_s: boolean;
+  caseNo: number;
 }
 
 /** せん断応力度照査結果 */
@@ -271,39 +224,6 @@ export interface ShearCheckPoint {
   location: string;
   caseNo: number;
   L: number;
-}
-
-/** RC部材応力度照査結果 */
-export interface RCStressCheckPoint {
-  M: number;
-  N: number;
-  b: number;
-  h: number;
-  d: number;
-  sigma_c: number;
-  sigma_s: number;
-  sigma_ca: number;
-  sigma_sa: number;
-  x: number;   // 中立軸
-  ok_c: boolean;
-  ok_s: boolean;
-}
-
-/** 引張鉄筋量照査結果 */
-export interface RebarCheckResult {
-  M: number;
-  N: number;
-  Pe: number;
-  T: number;
-  e_pc: number;
-  Ac: number;
-  Zc: number;
-  sigma_c: number;
-  sigma_t: number;
-  x: number;
-  As1: number;
-  As2: number;
-  As: number;
 }
 
 /** 破壊安全度照査結果 */
@@ -322,27 +242,15 @@ export interface CalcResults {
   liveLoad1: LiveLoadResult;
   liveLoad2: LiveLoadResult;
   sectionForces: {
-    stress: CaseForces[];          // 応力度照査用 3ケース
-    rebar: CaseForces[];           // 引張鉄筋量照査用 3ケース
-    safety1: CaseForces[];         // 破壊安全度照査用-1 3ケース
-    safety2: CaseForces[];         // 破壊安全度照査用-2 3ケース
-    safety3: CaseForces[];         // 破壊安全度照査用-3 3ケース
-  };
-  prestress: {
-    top: PrestressResult;
-    bottom: PrestressResult;
+    stress: CaseForces[];
+    safety1: CaseForces[];
+    safety2: CaseForces[];
+    safety3: CaseForces[];
   };
   stressCheck?: {
-    pc_dead: Record<string, StressCheckPoint[]>;
-    pc_design: Record<string, StressCheckPoint[]>;
-    pc_shear_dead: ShearCheckPoint[];
-    pc_shear_design: ShearCheckPoint[];
-    rc: Record<string, RCStressCheckPoint[]>;
-    rc_shear: ShearCheckPoint[];
+    bending: Record<string, RCStressCheckPoint[]>;
+    shear: ShearCheckPoint[];
   };
-  rebarCheck?: Record<string, RebarCheckResult>;
-  safetyCheck?: {
-    pc: Record<string, SafetyCheckResult[]>;
-    rc: Record<string, SafetyCheckResult[]>;
-  };
+  rebarCheck?: unknown;   // RebarCheckResult[] from rebarCheck.ts
+  safetyCheck?: Record<string, SafetyCheckResult[]>;
 }

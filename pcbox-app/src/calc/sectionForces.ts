@@ -64,7 +64,6 @@ export function calcSectionForces(
   live2Forces: CaseForces,
 ): {
   stress: CaseForces[];     // 応力度照査用
-  rebar: CaseForces[];      // 引張鉄筋量照査用
   safety1: CaseForces[];    // 破壊安全度-1 (1.3×死+2.5×活)
   safety2: CaseForces[];    // 破壊安全度-2 (1.0×死+2.5×活)
   safety3: CaseForces[];    // 破壊安全度-3 (1.7×(死+活))
@@ -75,14 +74,6 @@ export function calcSectionForces(
     combineCaseForces(deadForces, 1.0, live1Forces, 1.0),    // case2: 死+活1
     combineCaseForces(deadForces, 1.0, live2Forces, 1.0),    // case3: 死+活2
     combineCaseForces3(deadForces, 1.0, live1Forces, 1.0, live2Forces, 1.0), // case4: 死+活1+活2
-  ];
-
-  // 引張鉄筋量照査用: 4ケース (死 + 1.35×活)
-  const rebar = [
-    combineCaseForces(deadForces, 1.0, deadForces, 0),
-    combineCaseForces(deadForces, 1.0, live1Forces, 1.35),
-    combineCaseForces(deadForces, 1.0, live2Forces, 1.35),
-    combineCaseForces3(deadForces, 1.0, live1Forces, 1.35, live2Forces, 1.35),
   ];
 
   // 破壊安全度-1: 1.3×死 + 2.5×活
@@ -109,5 +100,5 @@ export function calcSectionForces(
     combineCaseForces3(deadForces, 1.7, live1Forces, 1.7, live2Forces, 1.7),
   ];
 
-  return { stress, rebar, safety1, safety2, safety3 };
+  return { stress, safety1, safety2, safety3 };
 }

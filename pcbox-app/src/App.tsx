@@ -4,7 +4,6 @@ import { defaultInput } from './utils/constants';
 import { calcDeadLoad, calcLiveLoad1, calcLiveLoad2 } from './calc/loads';
 import { runFrameAnalysis } from './calc/frame';
 import { calcSectionForces } from './calc/sectionForces';
-import { calcPrestress } from './calc/prestress';
 import { runStressCheck } from './calc/stressCheck';
 import { runRebarCheck } from './calc/rebarCheck';
 import { runSafetyCheck } from './calc/safetyCheck';
@@ -22,16 +21,13 @@ function runCalculation(input: DesignInput): CalcResults {
   const { deadForces, live1Forces, live2Forces } = runFrameAnalysis(input, deadLoad, liveLoad1, liveLoad2);
   const sectionForces = calcSectionForces(deadForces, live1Forces, live2Forces);
 
-  const prestress = calcPrestress(input, deadForces);
-
-  const stressCheck = runStressCheck(input, sectionForces.stress, prestress);
-  const rebarCheck = runRebarCheck(input, sectionForces.rebar, prestress);
+  const stressCheck = runStressCheck(input, sectionForces.stress);
+  const rebarCheck = runRebarCheck(input, sectionForces.stress);
   const safetyCheck = runSafetyCheck(
     input,
     sectionForces.safety1,
     sectionForces.safety2,
     sectionForces.safety3,
-    prestress,
   );
 
   return {
@@ -39,7 +35,6 @@ function runCalculation(input: DesignInput): CalcResults {
     liveLoad1,
     liveLoad2,
     sectionForces,
-    prestress,
     stressCheck,
     rebarCheck,
     safetyCheck,
@@ -71,7 +66,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-blue-800 text-white px-6 py-3 shadow">
-        <h1 className="text-xl font-bold">PCボックスカルバート設計計算</h1>
+        <h1 className="text-xl font-bold">RCボックスカルバート設計計算</h1>
       </header>
       <div className="flex flex-col lg:flex-row">
         <div
